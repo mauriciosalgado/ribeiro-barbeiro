@@ -114,9 +114,9 @@ urls:
 
 # --- Email (required for real accounts to verify/reset passwords) ------
 email:
-  smtpHost: ""
+  smtpHost: "smtp.gmail.com"
   smtpPort: 587
-  smtpFrom: "no-reply@example.com"
+  smtpFrom: "Ribeiro Barbeiro <info@ribeirobarbeiro.com>"
   smtpUsername: ""
   smtpPassword: ""
   smtpStartTLS: true

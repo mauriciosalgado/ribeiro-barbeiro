@@ -1,12 +1,19 @@
 {{ .Values.shop.name }} is deploying.
 
 {{- if .Values.ingress.enabled }}
-Website:      https://{{ .Values.ingress.host }}
-API docs:     https://{{ .Values.ingress.apiHost }}/docs
-Admin panel:  https://{{ .Values.ingress.apiHost }}/admin
+{{- $scheme := ternary "https" "http" .Values.ingress.tls.enabled }}
+Website:      {{ $scheme }}://{{ .Values.ingress.host }}
+{{- if .Values.ingress.apiHost }}
+API docs:     {{ $scheme }}://{{ .Values.ingress.apiHost }}/docs
+Admin panel:  {{ $scheme }}://{{ .Values.ingress.apiHost }}/admin
+{{- else }}
+API docs / admin panel: not exposed (ingress.apiHost is unset) — the app
+doesn't need them public. Reach them instead with:
+  kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-backend 8000:8000
+{{- end }}
 {{- else }}
 Ingress is disabled. Reach the app with:
-  kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-frontend 3000:3000 8001:8001
+  kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-frontend 3000:3000
   kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-backend 8000:8000
 {{- end }}
 

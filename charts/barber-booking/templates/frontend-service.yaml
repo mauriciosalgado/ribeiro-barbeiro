@@ -8,9 +8,8 @@ spec:
   selector:
     app: {{ include "barber-booking.fullname" . }}-frontend
   ports:
+    # The page, Reflex's own event backend (websocket state, /_upload), and
+    # our /logo proxy all share this one port — see rxconfig.py for why.
     - name: web
       port: 3000
       targetPort: web
-    - name: events
-      port: 8001
-      targetPort: events

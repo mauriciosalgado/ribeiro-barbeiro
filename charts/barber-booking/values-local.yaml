@@ -7,7 +7,7 @@
 #   minikube image load barber-booking-frontend:dev
 #   helm upgrade --install shop ./charts/barber-booking -f values-local.yaml \
 #     --set image.backend.tag=dev --set image.frontend.tag=dev
-#   kubectl port-forward svc/shop-barber-booking-frontend 3000:3000 8001:8001
+#   kubectl port-forward svc/shop-barber-booking-frontend 3000:3000
 #   kubectl port-forward svc/shop-barber-booking-backend 8000:8000
 
 jwtSecret: "dev-only-secret-change-me"
@@ -34,12 +34,13 @@ image:
 ingress:
   enabled: false
 
-# Reflex's event backend (port 8001) isn't behind any path-splitting proxy
-# locally, so it needs its own plain-http URL — unlike the production
-# default, which shares the Ingress host with the web page via path rules.
+# Reflex's own backend (frontend and backend share one port in production —
+# see rxconfig.py) isn't behind any path-splitting proxy locally, so it
+# needs its own plain-http URL — unlike the production default, which
+# shares the Ingress host with the web page since it's all one port anyway.
 urls:
   adminUrl: "http://localhost:8000/admin"
-  reflexApiUrl: "http://localhost:8001"
+  reflexApiUrl: "http://localhost:3000"
   frontendUrl: "http://localhost:3000"
 
 corsOrigins: "http://localhost:3000"

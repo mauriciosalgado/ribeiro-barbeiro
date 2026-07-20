@@ -82,10 +82,10 @@ One `Application` per shop; each just needs its own values file and its own
    "Private registry access" below for both.
 2. **DNS**: point one hostname at your Ingress controller's load balancer —
    the booking website (e.g. `shop.example.com`). That's the only public
-   hostname most shops need: Reflex's own event backend (websocket state +
-   the logo proxy) shares this same host via path rules, so the booking API
-   itself is never reachable from the internet, and customers can book,
-   verify their email, and reset their password entirely through it. Leave
+   hostname most shops need: Reflex's own backend (websocket state + the
+   logo proxy) shares this same port as the page, so the booking API itself
+   is never reachable from the internet, and customers can book, verify
+   their email, and reset their password entirely through it. Leave
    `ingress.apiHost` unset (the default) unless you specifically want the
    API exposed too — see the note right after this list before turning it on.
 3. **TLS**: either have cert-manager issue a cert automatically (uncomment

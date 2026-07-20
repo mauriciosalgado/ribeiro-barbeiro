@@ -23,11 +23,12 @@ from shop.ui import (
 # Where the booking API lives (override with API_URL in another deployment).
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
-# Reflex's own event backend — the same origin the browser already connects
-# to for websocket state sync (see rxconfig.py's REFLEX_API_URL). The shop's
-# logo is proxied through here too (see shop/api.py), so the booking API
-# itself never needs to be reachable from the browser just to show it.
-REFLEX_API_URL = os.environ.get("REFLEX_API_URL", "http://localhost:8001")
+# Reflex's own backend — the same origin the browser already connects to for
+# websocket state sync (see rxconfig.py; frontend and backend share one port
+# in production). The shop's logo is proxied through here too (see
+# shop/api.py), so the booking API itself never needs to be reachable from
+# the browser just to show it.
+REFLEX_API_URL = os.environ.get("REFLEX_API_URL", "http://localhost:3000")
 
 # Browser-facing URL of the admin console (the backend serves it at /admin).
 # Empty by default — the admin console is optional to expose publicly at

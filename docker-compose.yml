@@ -43,8 +43,7 @@ services:
     build: ./frontend
     pull_policy: build
     ports:
-      - "3000:3000" # the booking website
-      - "8001:8001" # Reflex's event backend that the browser connects to
+      - "3000:3000" # the booking website + Reflex's own event backend (one port)
     environment:
       # Server-side calls from the UI to the booking API (container-to-container).
       API_URL: http://backend:8000

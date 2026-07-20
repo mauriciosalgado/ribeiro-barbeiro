@@ -15,7 +15,13 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY . .
 
-EXPOSE 3000 8001
-# Reflex's production mode expects a single port behind a reverse proxy. Until we
-# add one, run the built-in server (compiles the UI on first start).
-CMD ["reflex", "run"]
+EXPOSE 3000
+# Production mode serves the pre-built static frontend instead of running
+# Vite's dev server — the dev server enforces an "allowed hosts" allow-list
+# that blocks any Host header other than localhost, which would 403 every
+# request once this sits behind a real Ingress/domain. --single-port merges
+# the page and Reflex's own backend (websocket state, /_upload, our /logo
+# proxy) onto the one port configured in rxconfig.py (frontend_port ==
+# backend_port); Reflex's production mode requires this flag whenever a
+# single port is used.
+CMD ["reflex", "run", "--env", "prod", "--single-port"]

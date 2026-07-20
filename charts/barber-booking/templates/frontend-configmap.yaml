@@ -17,9 +17,9 @@ data:
   # comment for the full tradeoff before enabling it.
   ADMIN_URL: {{ include "barber-booking.adminUrl" . | quote }}
   MAIL_INBOX_URL: {{ .Values.frontend.mailInboxUrl | quote }}
-  # Where the *browser* reaches Reflex's own event backend (websocket state
-  # sync, and the shop's logo proxy — see frontend/shop/api.py — a different
-  # thing from the FastAPI API above). Must match the Ingress host that
-  # routes /_event, /_upload, /ping, /_health, /_all_routes, /logo to this
-  # frontend Service's "events" port.
+  # Where the *browser* reaches Reflex's own backend (websocket state sync,
+  # and the shop's logo proxy — see frontend/shop/api.py — a different thing
+  # from the FastAPI API above). Must match the Ingress host that routes
+  # traffic to this frontend Service; frontend and backend share one port
+  # (see rxconfig.py), so no path-splitting is needed.
   REFLEX_API_URL: {{ include "barber-booking.reflexApiUrl" . | quote }}

@@ -21,57 +21,13 @@ spec:
       secretName: {{ include "barber-booking.tlsSecretName" . }}
   {{- end }}
   rules:
-    # The booking website. Reflex serves the page on :3000 and its own
-    # websocket/upload/health endpoints (/_event, /_upload, /ping, /_health,
-    # /_all_routes, /logo) on :8001 — all reachable under this one host,
-    # which is why REFLEX_API_URL (frontend ConfigMap) is set to this same
-    # hostname. /logo is a proxy to the booking API's logo image (see
-    # frontend/shop/api.py) so the API itself never needs to be public.
+    # The booking website. Reflex serves the page, its own event backend
+    # (websocket state, /_upload, /ping, /_health, /_all_routes) and our
+    # /logo proxy (see frontend/shop/api.py) all on this one port — a single
+    # catch-all path is all that's needed.
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /_event
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
-          - path: /_upload
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
-          - path: /ping
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
-          - path: /_health
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
-          - path: /_all_routes
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
-          - path: /logo
-            pathType: Exact
-            backend:
-              service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
-                port:
-                  name: events
           - path: /
             pathType: Prefix
             backend:

@@ -44,7 +44,7 @@ Website → http://localhost:3000
 | Variable | Purpose | Default |
 | -------- | ------- | ------- |
 | `API_URL` | Backend URL (server-side calls only — never reaches the browser) | `http://localhost:8000` |
-| `REFLEX_API_URL` | Reflex's own event backend URL, used by the browser for websocket state sync **and** the shop logo/favicon (proxied to the backend server-side, see `shop/api.py`) | `http://localhost:8001` |
+| `REFLEX_API_URL` | Reflex's own backend URL, used by the browser for websocket state sync **and** the shop logo/favicon (proxied to the backend server-side, see `shop/api.py`) | `http://localhost:3000` |
 | `ADMIN_URL` | Public URL of the backend's SQLAdmin console, shown as a link to the owner. Empty (default) hides the link. **Setting this only makes sense if the backend itself is also reachable from the internet at that URL** — this variable doesn't expose anything by itself, it just links to wherever you've already made `/admin` public | `http://localhost:8000/admin` |
 | `MAIL_INBOX_URL` | Dev only: Mailpit link in the verify banner | _(empty)_ |
 

@@ -24,8 +24,6 @@ spec:
           ports:
             - name: web
               containerPort: 3000
-            - name: events
-              containerPort: 8001
           envFrom:
             - configMapRef:
                 name: {{ include "barber-booking.fullname" . }}-frontend

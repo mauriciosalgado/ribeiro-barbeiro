@@ -143,7 +143,7 @@ cosmetic, mail still delivers.
 | Variable | Dev default |
 | -------- | ----------- |
 | `API_URL` | `http://backend:8000` (server-side only, never public) |
-| `REFLEX_API_URL` | `http://localhost:8001` (browser-facing: websocket state + logo proxy) |
+| `REFLEX_API_URL` | `http://localhost:3000` (browser-facing: websocket state + logo proxy) |
 | `ADMIN_URL` | `http://localhost:8000/admin` (optional — empty hides the admin link) |
 
 The booking API never needs to be publicly reachable — the frontend's own
@@ -230,15 +230,6 @@ Revisit them only if your situation changes.
   — they remain valid until they naturally expire (24h). This is a standard
   stateless-JWT tradeoff. If you need instant revocation, you'd need a
   server-side token blocklist or session store.
-- **Frontend runs in Reflex dev mode.** `reflex run --env prod --single-port`
-  was tested and works on the surface, but throws a repeated internal
-  `AssertionError` (a WebSocket-vs-static-file routing bug in how Reflex
-  multiplexes both on one port). Dev mode is verified stable with zero
-  errors across every flow, just heavier/unoptimized. Don't switch without
-  first resolving that bug or splitting frontend/backend behind a proxy
-  that routes WebSocket traffic separately (e.g. Traefik). The Helm chart
-  works around this by giving Reflex's event backend its own Ingress path
-  rules rather than relying on Reflex's single-port mode.
 - **SQLite by default.** Fine for one shop's traffic; a single file, no
   separate DB server to run. Swap to Postgres (see above, or the Helm
   chart's built-in Postgres option) if you need concurrent writers or
