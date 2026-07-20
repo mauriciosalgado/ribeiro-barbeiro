@@ -66,15 +66,19 @@ imageCredentials:
   password: "" # PAT with read:packages (or equivalent) scope
 
 # --- Networking --------------------------------------------------------
-# The frontend needs TWO public hostnames:
-#   host    - the booking website (Reflex UI + its own websocket backend)
-#   apiHost - the FastAPI booking API (also serves /docs and /admin)
-# Kept on separate hosts so nothing has to be split by path.
+# The frontend needs just ONE public hostname — the booking website (Reflex
+# UI + its own websocket backend, which also proxies the shop's logo, so the
+# booking API itself never has to be public just for that).
+#
+# apiHost is optional: only set it if you also want /docs and/or /admin
+# (the SQLAdmin console) reachable from the internet. Leave it empty (the
+# default) and the API stays cluster-internal only — nothing in the app
+# needs it to be public otherwise.
 ingress:
   enabled: true
   className: nginx
   host: shop.example.com
-  apiHost: api.shop.example.com
+  apiHost: "" # optional — set to expose /docs and /admin, e.g. api.shop.example.com
   annotations: {}
   # cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
@@ -91,10 +95,9 @@ corsOrigins: ""
 # app is reached with plain-http `kubectl port-forward` and there's no
 # Ingress splitting paths at all.
 urls:
-  publicApiUrl: "" # browser -> FastAPI (logo/favicon). default: https://<apiHost>
-  adminUrl: "" # default: https://<apiHost>/admin
-  reflexApiUrl: "" # browser -> Reflex's own event backend. default: https://<host>
-  frontendUrl: "" # backend's password-reset email link. default: https://<host>
+  adminUrl: "" # default: https://<apiHost>/admin if apiHost is set, else hidden
+  reflexApiUrl: "" # browser -> Reflex's own event backend (and logo proxy). default: https://<host>
+  frontendUrl: "" # backend's password-reset/verification email links. default: https://<host>
 
 # --- Email (required for real accounts to verify/reset passwords) ------
 email:

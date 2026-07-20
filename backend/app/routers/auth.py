@@ -64,9 +64,16 @@ class ChangePasswordRequest(SQLModel):
 
 
 def _send_verification_email(user: User) -> None:
-    """Email the user a verification link; a mail outage must not block signup."""
+    """Email the user a verification link; a mail outage must not block signup.
+
+    Points at the *frontend's* /verify page (not this API directly) — the
+    frontend calls GET /auth/verify itself, server-side, so the booking API
+    never needs to be reachable from the browser just for this.
+    """
     assert user.id is not None
-    link = f"{get_settings().public_base_url}/auth/verify?token={create_verification_token(user.id)}"
+    settings = get_settings()
+    base = settings.frontend_url or settings.public_base_url
+    link = f"{base}/verify?token={create_verification_token(user.id)}"
     try:
         send_email(user.email, "Verify your email", f"Confirm your account: {link}")
     except OSError as error:

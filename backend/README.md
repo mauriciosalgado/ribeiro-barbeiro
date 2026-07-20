@@ -53,7 +53,8 @@ All values in `.env.example` are required — a missing one stops the app at sta
 | `JWT_SECRET` | Signs all tokens — `openssl rand -hex 32` |
 | `DATABASE_URL` | `sqlite:///./barber.db` (dev) or `postgresql://…` (prod) |
 | `CORS_ORIGINS` | Allowed browser origins, comma-separated or `*` |
-| `PUBLIC_BASE_URL` | Used in email links |
+| `PUBLIC_BASE_URL` | Fallback base URL for email links if `FRONTEND_URL` is unset |
+| `FRONTEND_URL` | Frontend URL used in password-reset/verification email links (e.g. `.../verify?token=...`) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` | Outgoing mail; empty host = disabled |
 | `SMTP_STARTTLS`, `SMTP_USERNAME`, `SMTP_PASSWORD` | TLS + auth for production |
 | `SHOP_BRAND`, `SHOP_BACKGROUND`, `SHOP_HEADLINE` | Initial theme (owner overrides from UI) |

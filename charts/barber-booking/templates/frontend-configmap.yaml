@@ -6,15 +6,17 @@ metadata:
     {{- include "barber-booking.labels" . | nindent 4 }}
 data:
   # Server-side calls from the UI to the booking API — in-cluster DNS, not
-  # the public API URL.
+  # a public URL. The API itself never needs to be public: this is the only
+  # way anything in the app reaches it, other than the optional /docs and
+  # /admin exposure below.
   API_URL: {{ printf "http://%s-backend:8000" (include "barber-booking.fullname" .) | quote }}
-  # Browser-facing backend URL, used for the <img> logo/favicon and the admin
-  # console link.
-  PUBLIC_API_URL: {{ include "barber-booking.publicApiUrl" . | quote }}
+  # Browser-facing link to the backend admin console. Empty unless
+  # ingress.apiHost is set — the UI hides the link when this is empty.
   ADMIN_URL: {{ include "barber-booking.adminUrl" . | quote }}
   MAIL_INBOX_URL: {{ .Values.frontend.mailInboxUrl | quote }}
   # Where the *browser* reaches Reflex's own event backend (websocket state
-  # sync — a different thing from the FastAPI API above). Must match the
-  # Ingress host that routes /_event, /_upload, /ping, /_health, /_all_routes
-  # to this frontend Service's "events" port.
+  # sync, and the shop's logo proxy — see frontend/shop/api.py — a different
+  # thing from the FastAPI API above). Must match the Ingress host that
+  # routes /_event, /_upload, /ping, /_health, /_all_routes, /logo to this
+  # frontend Service's "events" port.
   REFLEX_API_URL: {{ include "barber-booking.reflexApiUrl" . | quote }}

@@ -23,14 +23,16 @@ from shop.ui import (
 # Where the booking API lives (override with API_URL in another deployment).
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
-# Browser-facing URL of the backend, used for the <img> logo and favicon the
-# browser fetches directly. API_URL can be container-internal, so this defaults
-# to it but can be set to the backend's public URL in production.
-PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", API_URL)
+# Reflex's own event backend — the same origin the browser already connects
+# to for websocket state sync (see rxconfig.py's REFLEX_API_URL). The shop's
+# logo is proxied through here too (see shop/api.py), so the booking API
+# itself never needs to be reachable from the browser just to show it.
+REFLEX_API_URL = os.environ.get("REFLEX_API_URL", "http://localhost:8001")
 
 # Browser-facing URL of the admin console (the backend serves it at /admin).
-# API_URL can be container-internal, so the admin link needs its own public URL.
-ADMIN_URL = os.environ.get("ADMIN_URL", "http://localhost:8000/admin")
+# Empty by default — the admin console is optional to expose publicly at
+# all; when empty, the UI hides the link instead of showing a dead one.
+ADMIN_URL = os.environ.get("ADMIN_URL", "")
 
 # In dev, the compose file points this at Mailpit so the verify banner can link
 # straight to the caught email. Unset in production, where real email is sent.
@@ -193,6 +195,10 @@ class State(rx.State):
     reset_msg: str = ""
     reset_done: bool = False
 
+    # --- email verification (from email link) -----------------------------
+    verify_msg: str = ""
+    verify_done: bool = False
+
     # --- password change (logged-in) ------------------------------------
     pw_current: str = ""
     pw_new: str = ""
@@ -283,7 +289,7 @@ class State(rx.State):
         """Show pending upload as preview, or the live backend logo."""
         if self._pending_logo_b64:
             return f"data:{self._pending_logo_type};base64,{self._pending_logo_b64}"
-        return f"{PUBLIC_API_URL}/settings/logo?v={self.logo_version}"
+        return f"{REFLEX_API_URL}/logo?v={self.logo_version}"
 
     @rx.var
     def logged_in(self) -> bool:
@@ -772,6 +778,28 @@ class State(rx.State):
             self.reset_done = True
         else:
             self.reset_msg = "Link inválido ou expirado. Peça um novo."
+
+    @rx.event
+    async def load_verify_token(self):
+        """Read the token from the URL query string and verify it right away.
+
+        Calls the backend server-side (API_URL, container-internal) so the
+        booking API never needs to be reachable from the browser for this —
+        only this page (already public) does.
+        """
+        token = self.router.page.params.get("token", "")
+        self.verify_msg = ""
+        self.verify_done = False
+        if not token:
+            self.verify_msg = "Link inválido."
+            return
+        async with httpx.AsyncClient(base_url=API_URL, timeout=5) as client:
+            resp = await client.get("/auth/verify", params={"token": token})
+        if resp.status_code == 200:
+            self.verify_msg = "Email verificado com sucesso. Pode iniciar sessão."
+            self.verify_done = True
+        else:
+            self.verify_msg = "Link inválido ou expirado. Peça um novo email de verificação."
 
     @rx.event
     async def change_password(self):

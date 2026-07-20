@@ -80,10 +80,11 @@ One `Application` per shop; each just needs its own values file and its own
    by default **even if the repo is public** — either make them public
    (simplest, no cluster-side auth needed) or set up `imagePullSecrets`; see
    "Private registry access" below for both.
-2. **DNS**: point two hostnames at your Ingress controller's load balancer —
-   one for the website, one for the API (e.g. `shop.example.com` and
-   `api.shop.example.com`). They must be different hosts (see `values.yaml`
-   comments on `ingress.host`/`ingress.apiHost` for why).
+2. **DNS**: point one hostname at your Ingress controller's load balancer —
+   the booking website (e.g. `shop.example.com`). Reflex's own event backend
+   (websocket state + the logo proxy) shares this same host via path rules,
+   so no second hostname is needed unless you also want `/docs`/`/admin`
+   exposed (see `ingress.apiHost` below).
 3. **TLS**: either have cert-manager issue a cert automatically (uncomment
    the `cert-manager.io/cluster-issuer` annotation in `ingress.annotations`)
    or bring your own cert as a Secret named `ingress.tls.secretName`.
@@ -117,7 +118,7 @@ One `Application` per shop; each just needs its own values file and its own
    ingress:
      className: nginx # or whatever your cluster's Ingress controller is
      host: shop.ribeirobarbeiro.pt
-     apiHost: api.ribeirobarbeiro.pt
+     # apiHost: api.ribeirobarbeiro.pt  # optional — only if you want /docs or /admin public
 
    email:
      smtpHost: "smtp.your-provider.com"

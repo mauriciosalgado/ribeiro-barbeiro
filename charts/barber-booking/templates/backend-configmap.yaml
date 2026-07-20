@@ -13,7 +13,9 @@ data:
   SHOP_BACKGROUND: {{ .Values.shop.background | quote }}
   SHOP_HEADLINE: {{ .Values.shop.headline | quote }}
   CORS_ORIGINS: {{ include "barber-booking.corsOrigins" . | quote }}
-  PUBLIC_BASE_URL: {{ include "barber-booking.publicApiUrl" . | quote }}
+  # Now always the frontend's own URL — the backend never needs to be
+  # publicly reachable, so this is just the fallback base for FRONTEND_URL.
+  PUBLIC_BASE_URL: {{ include "barber-booking.frontendUrl" . | quote }}
   FRONTEND_URL: {{ include "barber-booking.frontendUrl" . | quote }}
   SMTP_HOST: {{ .Values.email.smtpHost | quote }}
   SMTP_PORT: {{ .Values.email.smtpPort | quote }}

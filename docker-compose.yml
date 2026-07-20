@@ -29,7 +29,7 @@ services:
       # --- Local wiring — leave as-is for Docker dev ----------------------
       DATABASE_URL: "sqlite:////data/barber.db"
       CORS_ORIGINS: "*"
-      PUBLIC_BASE_URL: "http://localhost:8000"
+      PUBLIC_BASE_URL: "http://localhost:8000" # fallback base URL if FRONTEND_URL is unset
       FRONTEND_URL: "http://localhost:3000"
       SMTP_HOST: "smtp"
       SMTP_PORT: "1025"
@@ -48,12 +48,10 @@ services:
     environment:
       # Server-side calls from the UI to the booking API (container-to-container).
       API_URL: http://backend:8000
-      # Browser-facing backend URL, used for the <img> logo and favicon the
-      # browser loads directly (the logo is stored in and served by the backend).
-      PUBLIC_API_URL: http://localhost:8000
       # Dev only: link the verify banner straight to Mailpit's caught inbox.
       MAIL_INBOX_URL: http://localhost:8025
-      # Browser-facing link to the backend admin console (backend's public URL).
+      # Browser-facing link to the backend admin console. Optional — empty
+      # hides the link; set only if you want to expose /admin publicly.
       ADMIN_URL: http://localhost:8000/admin
     depends_on:
       - backend

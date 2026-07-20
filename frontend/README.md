@@ -43,10 +43,16 @@ Website → http://localhost:3000
 
 | Variable | Purpose | Default |
 | -------- | ------- | ------- |
-| `API_URL` | Backend URL (server-side) | `http://localhost:8000` |
-| `PUBLIC_API_URL` | Backend URL the browser uses (logo, favicon) | same as `API_URL` |
-| `ADMIN_URL` | Admin console link shown to the owner | `http://localhost:8000/admin` |
+| `API_URL` | Backend URL (server-side calls only — never reaches the browser) | `http://localhost:8000` |
+| `REFLEX_API_URL` | Reflex's own event backend URL, used by the browser for websocket state sync **and** the shop logo/favicon (proxied to the backend server-side, see `shop/api.py`) | `http://localhost:8001` |
+| `ADMIN_URL` | Admin console link shown to the owner. Optional — leave empty to hide it (e.g. if the backend isn't exposed publicly) | `http://localhost:8000/admin` |
 | `MAIL_INBOX_URL` | Dev only: Mailpit link in the verify banner | _(empty)_ |
+
+The booking API itself never needs to be reachable from the browser: the
+logo is fetched through Reflex's own already-public backend (`/logo`, mounted
+via `api_transformer` in `shop.py`), and email verification links open a
+frontend page (`/verify`) that calls the backend server-side — the same
+pattern already used for password reset (`/reset-password`).
 
 ## Docker
 

@@ -1215,16 +1215,19 @@ def admin_view() -> rx.Component:
         working_hours_card(),
         services_card(),
         appearance_card(),
-        rx.link(
-            rx.hstack(
-                rx.icon("settings", size=16),
-                rx.text("Abrir a consola de administração", weight="medium"),
-                align="center",
-                spacing="2",
+        rx.cond(
+            State.admin_url != "",
+            rx.link(
+                rx.hstack(
+                    rx.icon("settings", size=16),
+                    rx.text("Abrir a consola de administração", weight="medium"),
+                    align="center",
+                    spacing="2",
+                ),
+                href=State.admin_url,
+                is_external=True,
+                color=BRAND_TEXT,
             ),
-            href=State.admin_url,
-            is_external=True,
-            color=BRAND_TEXT,
         ),
         spacing="5",
         width="100%",

@@ -135,15 +135,22 @@ cosmetic, mail still delivers.
 | -------- | ----------- |
 | `DATABASE_URL` | `sqlite:////data/barber.db` |
 | `CORS_ORIGINS` | `*` |
-| `PUBLIC_BASE_URL` | `http://localhost:8000` |
+| `PUBLIC_BASE_URL` | `http://localhost:8000` (fallback if `FRONTEND_URL` is unset) |
+| `FRONTEND_URL` | `http://localhost:3000` (used for password-reset/verification email links) |
 
 **Frontend:**
 
 | Variable | Dev default |
 | -------- | ----------- |
-| `API_URL` | `http://backend:8000` |
-| `PUBLIC_API_URL` | `http://localhost:8000` |
-| `ADMIN_URL` | `http://localhost:8000/admin` |
+| `API_URL` | `http://backend:8000` (server-side only, never public) |
+| `REFLEX_API_URL` | `http://localhost:8001` (browser-facing: websocket state + logo proxy) |
+| `ADMIN_URL` | `http://localhost:8000/admin` (optional — empty hides the admin link) |
+
+The booking API never needs to be publicly reachable. The frontend's own
+Reflex backend (already public, for websocket state) proxies the shop logo,
+and email links open frontend pages (`/verify`, `/reset-password`) that call
+the API server-side. Only expose the API directly if you want `/docs` or the
+admin console (`/admin`) reachable from the internet.
 
 ### HTTPS
 

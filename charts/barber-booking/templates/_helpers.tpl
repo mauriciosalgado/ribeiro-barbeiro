@@ -54,18 +54,20 @@ https://{{ .Values.ingress.host }}
 {{- end -}}
 
 {{/*
-The four public-facing URLs below all default to "https://<ingress host>",
-which is correct once real Ingress + TLS + DNS are in front. Each can be
-overridden independently under .Values.urls — used by values-local.yaml,
+Public-facing URLs. reflexApiUrl/frontendUrl default to "https://<ingress
+host>" — correct once real Ingress + TLS + DNS are in front. adminUrl is
+opt-in: only defaults to something if ingress.apiHost is set (see values.yaml
+— the API host is optional, only needed to expose /admin or /docs). Each can
+be overridden independently under .Values.urls — used by values-local.yaml,
 where there's no Ingress at all and the app is reached via plain-http
 `kubectl port-forward` instead.
 */}}
-{{- define "barber-booking.publicApiUrl" -}}
-{{- .Values.urls.publicApiUrl | default (printf "https://%s" .Values.ingress.apiHost) -}}
-{{- end -}}
-
 {{- define "barber-booking.adminUrl" -}}
-{{- .Values.urls.adminUrl | default (printf "https://%s/admin" .Values.ingress.apiHost) -}}
+{{- if .Values.urls.adminUrl -}}
+{{ .Values.urls.adminUrl }}
+{{- else if .Values.ingress.apiHost -}}
+{{ printf "https://%s/admin" .Values.ingress.apiHost }}
+{{- end -}}
 {{- end -}}
 
 {{- define "barber-booking.reflexApiUrl" -}}

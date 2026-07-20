@@ -15,14 +15,18 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.host }}
+        {{- if .Values.ingress.apiHost }}
         - {{ .Values.ingress.apiHost }}
+        {{- end }}
       secretName: {{ include "barber-booking.tlsSecretName" . }}
   {{- end }}
   rules:
     # The booking website. Reflex serves the page on :3000 and its own
     # websocket/upload/health endpoints (/_event, /_upload, /ping, /_health,
-    # /_all_routes) on :8001 — both reachable under this one host, which is
-    # why REFLEX_API_URL (frontend ConfigMap) is set to this same hostname.
+    # /_all_routes, /logo) on :8001 — all reachable under this one host,
+    # which is why REFLEX_API_URL (frontend ConfigMap) is set to this same
+    # hostname. /logo is a proxy to the booking API's logo image (see
+    # frontend/shop/api.py) so the API itself never needs to be public.
     - host: {{ .Values.ingress.host }}
       http:
         paths:
@@ -61,6 +65,13 @@ spec:
                 name: {{ include "barber-booking.fullname" . }}-frontend
                 port:
                   name: events
+          - path: /logo
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
           - path: /
             pathType: Prefix
             backend:
@@ -68,8 +79,11 @@ spec:
                 name: {{ include "barber-booking.fullname" . }}-frontend
                 port:
                   name: web
-    # The booking API — its own subdomain, kept fully separate so it can
-    # never collide with a Reflex path above (also handy for /docs, /admin).
+    {{- if .Values.ingress.apiHost }}
+    # The booking API — optional, only needed to expose /docs and/or /admin
+    # (the SQLAdmin console) to the internet. Everything the booking site
+    # itself needs from the API happens pod-to-pod (API_URL), never through
+    # here.
     - host: {{ .Values.ingress.apiHost }}
       http:
         paths:
@@ -80,4 +94,5 @@ spec:
                 name: {{ include "barber-booking.fullname" . }}-backend
                 port:
                   number: 8000
+    {{- end }}
 {{- end }}

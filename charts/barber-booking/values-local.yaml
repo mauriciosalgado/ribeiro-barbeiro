@@ -38,7 +38,6 @@ ingress:
 # locally, so it needs its own plain-http URL — unlike the production
 # default, which shares the Ingress host with the web page via path rules.
 urls:
-  publicApiUrl: "http://localhost:8000"
   adminUrl: "http://localhost:8000/admin"
   reflexApiUrl: "http://localhost:8001"
   frontendUrl: "http://localhost:3000"

@@ -8,7 +8,8 @@ it reads the same on a phone as on a laptop.
 import reflex as rx
 from reflex.style import set_color_mode
 
-from shop.state import PUBLIC_API_URL, State
+from shop.api import api
+from shop.state import REFLEX_API_URL, State
 from shop.ui import CARD, INK, PAPER, SHADOW
 from shop.views import admin_view, auth_view, barber_view, customer_view, profile_card
 
@@ -177,13 +178,15 @@ def index() -> rx.Component:
     )
 
 
-# The favicon follows the shop's logo: point it at the backend, which serves the
-# current logo (falling back to the bundled default). The browser refreshes it
+# The favicon follows the shop's logo: point it at Reflex's own backend (this
+# is a proxy to the real logo, see shop/api.py) so it works the same whether
+# or not the booking API itself is exposed publicly. The browser refreshes it
 # on load, so replacing the logo updates the tab icon without a redeploy.
 app = rx.App(
+    api_transformer=api,
     head_components=[
-        rx.el.link(rel="icon", href=f"{PUBLIC_API_URL}/settings/logo"),
-    ]
+        rx.el.link(rel="icon", href=f"{REFLEX_API_URL}/logo"),
+    ],
 )
 app.add_page(index, route="/", title="Marcar · Barbearia", on_load=[State.init, State.refresh])
 
@@ -241,3 +244,36 @@ app.add_page(
     title="Repor palavra-passe",
     on_load=[State.load_reset_token],
 )
+
+
+def verify_email_page() -> rx.Component:
+    """Standalone page linked from the verification email — calls the backend
+    itself, server-side, so it works whether or not the booking API is
+    reachable from the browser."""
+    return rx.theme(
+        rx.center(
+            rx.vstack(
+                rx.heading("Verificação de email", size="5"),
+                rx.cond(
+                    State.verify_done,
+                    rx.callout(State.verify_msg, icon="check", color_scheme="grass", width="100%"),
+                    rx.callout(State.verify_msg, icon="alert-triangle", color_scheme="tomato", width="100%"),
+                ),
+                rx.link("Ir para o início de sessão", href="/"),
+                spacing="4",
+                width="100%",
+                max_width="380px",
+                padding="2rem",
+            ),
+            min_height="100vh",
+        ),
+    )
+
+
+app.add_page(
+    verify_email_page,
+    route="/verify",
+    title="Verificação de email",
+    on_load=[State.load_verify_token],
+)
+
