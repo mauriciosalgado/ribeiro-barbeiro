@@ -45,14 +45,17 @@ Website → http://localhost:3000
 | -------- | ------- | ------- |
 | `API_URL` | Backend URL (server-side calls only — never reaches the browser) | `http://localhost:8000` |
 | `REFLEX_API_URL` | Reflex's own event backend URL, used by the browser for websocket state sync **and** the shop logo/favicon (proxied to the backend server-side, see `shop/api.py`) | `http://localhost:8001` |
-| `ADMIN_URL` | Admin console link shown to the owner. Optional — leave empty to hide it (e.g. if the backend isn't exposed publicly) | `http://localhost:8000/admin` |
+| `ADMIN_URL` | Public URL of the backend's SQLAdmin console, shown as a link to the owner. Empty (default) hides the link. **Setting this only makes sense if the backend itself is also reachable from the internet at that URL** — this variable doesn't expose anything by itself, it just links to wherever you've already made `/admin` public | `http://localhost:8000/admin` |
 | `MAIL_INBOX_URL` | Dev only: Mailpit link in the verify banner | _(empty)_ |
 
 The booking API itself never needs to be reachable from the browser: the
 logo is fetched through Reflex's own already-public backend (`/logo`, mounted
 via `api_transformer` in `shop.py`), and email verification links open a
 frontend page (`/verify`) that calls the backend server-side — the same
-pattern already used for password reset (`/reset-password`).
+pattern already used for password reset (`/reset-password`). The **only**
+reason to expose the backend publicly at all is wanting the SQLAdmin console
+or interactive API docs reachable from a plain browser; nothing customers do
+(booking, verifying email, resetting a password) requires it.
 
 ## Docker
 

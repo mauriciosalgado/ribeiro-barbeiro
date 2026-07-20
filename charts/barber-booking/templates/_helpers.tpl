@@ -55,12 +55,14 @@ https://{{ .Values.ingress.host }}
 
 {{/*
 Public-facing URLs. reflexApiUrl/frontendUrl default to "https://<ingress
-host>" — correct once real Ingress + TLS + DNS are in front. adminUrl is
-opt-in: only defaults to something if ingress.apiHost is set (see values.yaml
-— the API host is optional, only needed to expose /admin or /docs). Each can
-be overridden independently under .Values.urls — used by values-local.yaml,
-where there's no Ingress at all and the app is reached via plain-http
-`kubectl port-forward` instead.
+host>" — correct once real Ingress + TLS + DNS are in front. adminUrl stays
+empty (hiding the admin link in the UI) unless ingress.apiHost is set — and
+setting apiHost publishes the whole FastAPI app to the internet, not just
+/admin, so it's an intentional opt-in (see the long comment above
+ingress.apiHost in values.yaml). Each of these can be overridden
+independently under .Values.urls — used by values-local.yaml, where there's
+no Ingress at all and the app is reached via plain-http `kubectl
+port-forward` instead.
 */}}
 {{- define "barber-booking.adminUrl" -}}
 {{- if .Values.urls.adminUrl -}}

@@ -6,12 +6,15 @@ metadata:
     {{- include "barber-booking.labels" . | nindent 4 }}
 data:
   # Server-side calls from the UI to the booking API — in-cluster DNS, not
-  # a public URL. The API itself never needs to be public: this is the only
-  # way anything in the app reaches it, other than the optional /docs and
-  # /admin exposure below.
+  # a public URL. The API itself never needs to be public for the booking
+  # site to work at all; ingress.apiHost (which this env var has nothing
+  # to do with) is a separate, optional opt-in for exposing it directly.
   API_URL: {{ printf "http://%s-backend:8000" (include "barber-booking.fullname" .) | quote }}
-  # Browser-facing link to the backend admin console. Empty unless
-  # ingress.apiHost is set — the UI hides the link when this is empty.
+  # Browser-facing link to the backend's SQLAdmin console. Empty (default)
+  # hides the link in the UI. Only gets a value when ingress.apiHost is set
+  # — which is precisely what makes the console reachable, since apiHost
+  # exposes the whole API to the internet. See values.yaml's ingress.apiHost
+  # comment for the full tradeoff before enabling it.
   ADMIN_URL: {{ include "barber-booking.adminUrl" . | quote }}
   MAIL_INBOX_URL: {{ .Values.frontend.mailInboxUrl | quote }}
   # Where the *browser* reaches Reflex's own event backend (websocket state

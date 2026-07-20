@@ -66,19 +66,31 @@ imageCredentials:
   password: "" # PAT with read:packages (or equivalent) scope
 
 # --- Networking --------------------------------------------------------
-# The frontend needs just ONE public hostname — the booking website (Reflex
-# UI + its own websocket backend, which also proxies the shop's logo, so the
-# booking API itself never has to be public just for that).
+# The frontend needs just ONE public hostname (ingress.host) — the booking
+# website. Reflex's own event backend rides along on that same host (for
+# websocket state sync and the shop's logo, see shop/api.py), so nothing
+# else needs to be public: customers book, verify their email, and reset
+# their password entirely through the frontend, which talks to the API
+# pod-to-pod (cluster-internal, never through this Ingress).
 #
-# apiHost is optional: only set it if you also want /docs and/or /admin
-# (the SQLAdmin console) reachable from the internet. Leave it empty (the
-# default) and the API stays cluster-internal only — nothing in the app
-# needs it to be public otherwise.
+# ingress.apiHost is OFF by default (empty) and should stay that way unless
+# you have a real reason to expose the API. Setting it publishes the ENTIRE
+# FastAPI app to the internet — every booking/auth endpoint, not just
+# /docs and /admin — because the Ingress rule for apiHost is a catch-all
+# "/" -> backend:8000. The one legitimate reason to turn it on is wanting
+# the SQLAdmin console (/admin) or the API docs (/docs) reachable from a
+# browser without a VPN/port-forward. If you do set it:
+#   - Point apiHost's DNS at the same Ingress load balancer as host.
+#   - The API gets its own TLS certificate/SAN entry alongside host.
+#   - ADMIN_URL (below, via urls.adminUrl) then defaults to
+#     "https://<apiHost>/admin" and the admin link appears in the UI again.
+#   - Nothing else in the app changes — booking/verify/reset still go
+#     through the frontend either way.
 ingress:
   enabled: true
   className: nginx
   host: shop.example.com
-  apiHost: "" # optional — set to expose /docs and /admin, e.g. api.shop.example.com
+  apiHost: "" # empty = API stays cluster-internal (recommended). See comment above before setting this.
   annotations: {}
   # cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
@@ -95,8 +107,9 @@ corsOrigins: ""
 # app is reached with plain-http `kubectl port-forward` and there's no
 # Ingress splitting paths at all.
 urls:
-  adminUrl: "" # default: https://<apiHost>/admin if apiHost is set, else hidden
-  reflexApiUrl: "" # browser -> Reflex's own event backend (and logo proxy). default: https://<host>
+  adminUrl: "" # link to the SQLAdmin console. Empty (default) hides it in the UI, UNLESS
+               # ingress.apiHost is set, in which case it defaults to "https://<apiHost>/admin"
+  reflexApiUrl: "" # browser -> Reflex's own event backend (websocket state + logo proxy). default: https://<host>
   frontendUrl: "" # backend's password-reset/verification email links. default: https://<host>
 
 # --- Email (required for real accounts to verify/reset passwords) ------

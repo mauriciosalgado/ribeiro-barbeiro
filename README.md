@@ -146,11 +146,15 @@ cosmetic, mail still delivers.
 | `REFLEX_API_URL` | `http://localhost:8001` (browser-facing: websocket state + logo proxy) |
 | `ADMIN_URL` | `http://localhost:8000/admin` (optional — empty hides the admin link) |
 
-The booking API never needs to be publicly reachable. The frontend's own
-Reflex backend (already public, for websocket state) proxies the shop logo,
-and email links open frontend pages (`/verify`, `/reset-password`) that call
-the API server-side. Only expose the API directly if you want `/docs` or the
-admin console (`/admin`) reachable from the internet.
+The booking API never needs to be publicly reachable — the frontend's own
+Reflex backend (already public, for websocket state) proxies the shop logo
+(`REFLEX_API_URL/logo`), and email links open frontend pages (`/verify`,
+`/reset-password`) that call the API server-side (`API_URL`). Only set
+`ADMIN_URL` to the API's own public URL (e.g. `https://api.yourshop.com/admin`)
+if you deliberately want the SQLAdmin console reachable from a browser —
+doing so means the API itself must be exposed to the internet, not just the
+`/admin` path (see the Helm chart's `ingress.apiHost` for the equivalent
+Kubernetes setting and its full tradeoff).
 
 ### HTTPS
 

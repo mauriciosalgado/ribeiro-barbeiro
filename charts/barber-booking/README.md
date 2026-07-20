@@ -81,10 +81,13 @@ One `Application` per shop; each just needs its own values file and its own
    (simplest, no cluster-side auth needed) or set up `imagePullSecrets`; see
    "Private registry access" below for both.
 2. **DNS**: point one hostname at your Ingress controller's load balancer —
-   the booking website (e.g. `shop.example.com`). Reflex's own event backend
-   (websocket state + the logo proxy) shares this same host via path rules,
-   so no second hostname is needed unless you also want `/docs`/`/admin`
-   exposed (see `ingress.apiHost` below).
+   the booking website (e.g. `shop.example.com`). That's the only public
+   hostname most shops need: Reflex's own event backend (websocket state +
+   the logo proxy) shares this same host via path rules, so the booking API
+   itself is never reachable from the internet, and customers can book,
+   verify their email, and reset their password entirely through it. Leave
+   `ingress.apiHost` unset (the default) unless you specifically want the
+   API exposed too — see the note right after this list before turning it on.
 3. **TLS**: either have cert-manager issue a cert automatically (uncomment
    the `cert-manager.io/cluster-issuer` annotation in `ingress.annotations`)
    or bring your own cert as a Secret named `ingress.tls.secretName`.
@@ -118,13 +121,25 @@ One `Application` per shop; each just needs its own values file and its own
    ingress:
      className: nginx # or whatever your cluster's Ingress controller is
      host: shop.ribeirobarbeiro.pt
-     # apiHost: api.ribeirobarbeiro.pt  # optional — only if you want /docs or /admin public
+     # apiHost: api.ribeirobarbeiro.pt  # only if you want the API public too — see note below
 
    email:
      smtpHost: "smtp.your-provider.com"
      smtpFrom: "no-reply@ribeirobarbeiro.pt"
      # smtpUsername/smtpPassword come from existingSecret, not here.
    ```
+
+   > **`ingress.apiHost` exposes the *entire* FastAPI app to the internet**
+   > — every booking/auth endpoint, not just `/docs` and `/admin` — because
+   > its Ingress rule is a catch-all `/` straight to the backend Service.
+   > The booking website never needs this (it talks to the API pod-to-pod
+   > via `API_URL` regardless of whether `apiHost` is set). The one good
+   > reason to set it is wanting the SQLAdmin console (`/admin`) or the
+   > interactive API docs (`/docs`) reachable from a plain browser, without
+   > a VPN or `kubectl port-forward`. If you do set it: point its DNS at the
+   > same load balancer as `host`, it gets its own TLS SAN entry
+   > automatically, and the "Abrir a consola de administração" link
+   > reappears in the owner UI pointing at `https://<apiHost>/admin`.
 
 6. **Sync** in ArgoCD (or let `syncPolicy.automated` do it). Watch the
    rollout: `kubectl get pods -n ribeiro-barbeiro -w`.

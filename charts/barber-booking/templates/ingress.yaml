@@ -80,10 +80,11 @@ spec:
                 port:
                   name: web
     {{- if .Values.ingress.apiHost }}
-    # The booking API — optional, only needed to expose /docs and/or /admin
-    # (the SQLAdmin console) to the internet. Everything the booking site
-    # itself needs from the API happens pod-to-pod (API_URL), never through
-    # here.
+    # apiHost is set, so this rule makes the ENTIRE FastAPI app public — every
+    # route ("/" is a catch-all to the backend Service), not just /docs and
+    # /admin. Only turn this on if you actually want the SQLAdmin console or
+    # API docs reachable from a browser; the booking website itself never
+    # needs this — it reaches the API pod-to-pod (API_URL) regardless.
     - host: {{ .Values.ingress.apiHost }}
       http:
         paths:
