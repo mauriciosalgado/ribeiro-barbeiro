@@ -32,12 +32,12 @@ existingSecret: ""
 # --- Container images --------------------------------------------------
 image:
   backend:
-    repository: ghcr.io/CHANGE-ME/barber-booking-backend
-    tag: latest
+    repository: ghcr.io/mauriciosalgado/ribeiro-barbeiro-backend
+    tag: v0.0.1
     pullPolicy: IfNotPresent
   frontend:
-    repository: ghcr.io/CHANGE-ME/barber-booking-frontend
-    tag: latest
+    repository: ghcr.io/mauriciosalgado/ribeiro-barbeiro-frontend
+    tag: v0.0.1
     pullPolicy: IfNotPresent
 
 # --- Private registry access --------------------------------------------
