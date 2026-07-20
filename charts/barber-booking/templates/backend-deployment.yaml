@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "barber-booking.fullname" . }}-backend
+  labels:
+    {{- include "barber-booking.labels" . | nindent 4 }}
+spec:
+  # See values.yaml: keep this at 1 unless you've moved to Postgres AND added
+  # a shared rate-limit store — the chart doesn't wire either of those up.
+  replicas: {{ .Values.backend.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ include "barber-booking.fullname" . }}-backend
+  template:
+    metadata:
+      labels:
+        app: {{ include "barber-booking.fullname" . }}-backend
+    spec:
+      {{- include "barber-booking.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # matches the "app" user created in backend/Dockerfile
+        runAsGroup: 1000
+        fsGroup: 1000 # so the mounted PVC is writable by that user
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: {{ include "barber-booking.fullname" . }}-backend
+            - secretRef:
+                name: {{ include "barber-booking.backendSecretName" . }}
+          env:
+            {{- if and (eq .Values.database.type "postgres") .Values.postgresql.enabled }}
+            # Must come before DATABASE_URL below — Kubernetes only expands
+            # $(VAR) references against variables already defined earlier in
+            # this same "env:" list (not against ConfigMap/Secret envFrom).
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "barber-booking.postgresSecretName" . }}
+                  key: POSTGRES_PASSWORD
+            {{- end }}
+            - name: DATABASE_URL
+              value: {{ include "barber-booking.databaseUrl" . | quote }}
+          {{- if eq .Values.database.type "sqlite" }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          # Liveness: the process is up. Readiness: it can reach its database.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      {{- if eq .Values.database.type "sqlite" }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "barber-booking.fullname" . }}-data
+      {{- end }}

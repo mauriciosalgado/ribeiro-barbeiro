@@ -1,0 +1,9 @@
+.venv
+.web
+.states
+__pycache__
+*.pyc
+*.db
+.git
+.gitignore
+assets/external

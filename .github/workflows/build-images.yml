@@ -1,0 +1,53 @@
+name: Build and push images
+
+# Builds the backend and frontend images and pushes them to this repo's own
+# GitHub Container Registry (GHCR) namespace:
+#   ghcr.io/<owner>/<repo>-backend:<tag>
+#   ghcr.io/<owner>/<repo>-frontend:<tag>
+#
+# Runs whenever a version tag is pushed:
+#   git tag v1.0.0 && git push origin v1.0.0
+# ...or manually from the Actions tab (GitHub UI → Actions → this workflow
+# → "Run workflow"), which tags the images "manual" instead.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read # to check out the code
+  packages: write # to push images to GHCR
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Work out the image names and tag
+        id: image
+        run: |
+          # GHCR requires lowercase image names; github.repository is "owner/repo".
+          owner_repo=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "backend=ghcr.io/$owner_repo-backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/$owner_repo-frontend" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF_NAME:-manual}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build backend image
+        run: docker build -t "${{ steps.image.outputs.backend }}:${{ steps.image.outputs.tag }}" backend
+
+      - name: Build frontend image
+        run: docker build -t "${{ steps.image.outputs.frontend }}:${{ steps.image.outputs.tag }}" frontend
+
+      - name: Push backend image
+        run: docker push "${{ steps.image.outputs.backend }}:${{ steps.image.outputs.tag }}"
+
+      - name: Push frontend image
+        run: docker push "${{ steps.image.outputs.frontend }}:${{ steps.image.outputs.tag }}"

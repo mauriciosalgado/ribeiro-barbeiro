@@ -1,0 +1,16 @@
+{{- if eq .Values.database.type "sqlite" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "barber-booking.fullname" . }}-data
+  labels:
+    {{- include "barber-booking.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.database.sqlite.storageClassName }}
+  storageClassName: {{ .Values.database.sqlite.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.database.sqlite.storage }}
+{{- end }}

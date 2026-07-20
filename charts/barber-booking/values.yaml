@@ -1,0 +1,175 @@
+# Default values for barber-booking. One install = one shop.
+# Override with your own values-<shop>.yaml, e.g.:
+#   helm install ribeiro ./charts/barber-booking -f values-ribeiro.yaml
+
+# --- Shop identity ---------------------------------------------------------
+shop:
+  name: "Change Me Barbershop"
+  timezone: "Europe/Lisbon"
+  brand: "#9e7b53" # accent colour, hex — the owner can recolour live from the UI
+  background: "#f6f1e9" # page colour, hex
+  headline: "" # sign-in headline; empty = none
+  owner:
+    name: "Owner"
+    email: "owner@example.com"
+    # Required. No default on purpose — set via --set or a values file that
+    # isn't committed, e.g. --set shop.owner.password="a strong password".
+    password: ""
+
+# Signs every login/verification/reset token. Required, no default on purpose.
+# Generate one per shop: openssl rand -hex 32
+jwtSecret: ""
+
+# For GitOps: instead of putting jwtSecret/shop.owner.password/email.smtp*
+# above in a values file committed to git, create a Secret out-of-band
+# (kubectl, SOPS, sealed-secrets, External Secrets Operator, your vault of
+# choice — whatever your GitOps setup already uses) with these four keys:
+#   JWT_SECRET, OWNER_PASSWORD, SMTP_USERNAME, SMTP_PASSWORD
+# then point this at its name. When set, the chart does not render its own
+# Secret and the jwtSecret/owner.password/smtp* values above are ignored.
+existingSecret: ""
+
+# --- Container images --------------------------------------------------
+image:
+  backend:
+    repository: ghcr.io/CHANGE-ME/barber-booking-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: ghcr.io/CHANGE-ME/barber-booking-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+# --- Private registry access --------------------------------------------
+# Only needed if image.*.repository is a private registry (e.g. GHCR with a
+# private package). Two ways to configure, pick one:
+#
+# 1. GitOps-friendly (preferred): create the pull secret out-of-band, the
+#    same way as existingSecret above, then just name it here:
+#      kubectl create secret docker-registry ghcr-pull \
+#        --docker-server=ghcr.io \
+#        --docker-username=<github-username> \
+#        --docker-password=<PAT with read:packages> \
+#        --namespace <your-namespace>
+imagePullSecrets: []
+# imagePullSecrets:
+#   - name: ghcr-pull
+#
+# 2. Let the chart create the secret for you from a PAT set here. Simpler,
+#    but the PAT then lives in whatever values file sets it — only use this
+#    with a values file that stays out of git (e.g. via --set, or a
+#    GitOps secret tool that injects it at apply time rather than storing it
+#    in the values file itself).
+imageCredentials:
+  registry: "" # e.g. ghcr.io
+  username: ""
+  password: "" # PAT with read:packages (or equivalent) scope
+
+# --- Networking --------------------------------------------------------
+# The frontend needs TWO public hostnames:
+#   host    - the booking website (Reflex UI + its own websocket backend)
+#   apiHost - the FastAPI booking API (also serves /docs and /admin)
+# Kept on separate hosts so nothing has to be split by path.
+ingress:
+  enabled: true
+  className: nginx
+  host: shop.example.com
+  apiHost: api.shop.example.com
+  annotations: {}
+  # cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: "" # defaults to "<release-name>-tls" if empty
+
+# CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty —
+# only change this if the frontend is reachable under a different origin.
+corsOrigins: ""
+
+# Advanced: override the public URLs directly instead of deriving them from
+# ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Leave
+# these empty for a normal deployment. Used by values-local.yaml, where the
+# app is reached with plain-http `kubectl port-forward` and there's no
+# Ingress splitting paths at all.
+urls:
+  publicApiUrl: "" # browser -> FastAPI (logo/favicon). default: https://<apiHost>
+  adminUrl: "" # default: https://<apiHost>/admin
+  reflexApiUrl: "" # browser -> Reflex's own event backend. default: https://<host>
+  frontendUrl: "" # backend's password-reset email link. default: https://<host>
+
+# --- Email (required for real accounts to verify/reset passwords) ------
+email:
+  smtpHost: ""
+  smtpPort: 587
+  smtpFrom: "no-reply@example.com"
+  smtpUsername: ""
+  smtpPassword: ""
+  smtpStartTLS: true
+
+# --- Database ------------------------------------------------------------
+# "sqlite"   - simplest option; a single file on a PersistentVolumeClaim.
+#              Fine for one shop's traffic, no separate DB server to run.
+# "postgres" - use the built-in Postgres below, or point at an external one.
+database:
+  type: sqlite
+
+  sqlite:
+    storage: 1Gi
+    storageClassName: ""
+
+  # Only used when database.type is "postgres" and postgresql.enabled is
+  # false — set to your managed/external Postgres connection string.
+  externalUrl: ""
+
+# Built-in Postgres (a plain single-replica StatefulSet — no external chart
+# dependency to keep this simple to read and audit). Only used when
+# database.type is "postgres". Ignored entirely for sqlite.
+postgresql:
+  enabled: false
+  image: postgres:16-alpine
+  database: barber
+  username: barber
+  # Required if postgresql.enabled is true and existingSecret below is empty.
+  password: ""
+  # Same idea as the top-level existingSecret: a pre-created Secret with a
+  # POSTGRES_PASSWORD key, so the DB password doesn't have to live in git
+  # either. When set, postgresql.password above is ignored.
+  existingSecret: ""
+  storage: 2Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- Backend (FastAPI) ---------------------------------------------------
+# Keep replicas at 1: SQLite is a single file (one writer at a time) and the
+# login rate limiter counts in memory per pod. Scaling past 1 needs Postgres
+# *and* a shared rate-limit store (e.g. Redis) — not wired up here.
+backend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# --- Frontend (Reflex) ---------------------------------------------------
+# Keep replicas at 1: Reflex keeps UI state in memory per worker; running
+# more than one needs Reflex's Redis-backed state manager — not wired up here.
+frontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Dev-only convenience link to a caught-email inbox (e.g. Mailpit). Leave
+  # empty in production.
+  mailInboxUrl: ""

@@ -1,0 +1,30 @@
+[project]
+name = "barber-booking"
+version = "0.1.0"
+description = "Online appointment booking for a barber shop."
+requires-python = ">=3.13"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "email-validator>=2.3.0",
+    "fastapi",
+    "itsdangerous>=2.2.0",
+    "pydantic-settings",
+    "pyjwt>=2.13.0",
+    "python-multipart>=0.0.32",
+    "slowapi>=0.1.9",
+    "sqladmin>=0.29.0",
+    "sqlmodel",
+    "uvicorn[standard]",
+]
+
+[project.scripts]
+serve = "app.main:run"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]

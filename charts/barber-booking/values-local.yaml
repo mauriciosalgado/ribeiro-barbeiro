@@ -1,0 +1,46 @@
+# Values for trying this out on a local, no-registry cluster (kind/minikube/
+# k3d/Docker Desktop). Not meant for a real shop — dev-only secrets, no TLS.
+#
+#   docker build -t barber-booking-backend:dev ./backend
+#   docker build -t barber-booking-frontend:dev ./frontend
+#   minikube image load barber-booking-backend:dev   # or: kind load docker-image ...
+#   minikube image load barber-booking-frontend:dev
+#   helm upgrade --install shop ./charts/barber-booking -f values-local.yaml \
+#     --set image.backend.tag=dev --set image.frontend.tag=dev
+#   kubectl port-forward svc/shop-barber-booking-frontend 3000:3000 8001:8001
+#   kubectl port-forward svc/shop-barber-booking-backend 8000:8000
+
+jwtSecret: "dev-only-secret-change-me"
+
+shop:
+  name: "Local Dev Shop"
+  owner:
+    email: "owner@example.com"
+    password: "change-me"
+
+# Never try to pull — the images only exist locally (built + loaded above),
+# there is no registry to pull them from.
+image:
+  backend:
+    repository: barber-booking-backend
+    pullPolicy: Never
+  frontend:
+    repository: barber-booking-frontend
+    pullPolicy: Never
+
+# Most local clusters (kind/minikube/k3d) don't have an Ingress controller
+# and a real TLS cert set up out of the box. Disable Ingress and reach the
+# app with `kubectl port-forward` instead (see NOTES.txt after installing).
+ingress:
+  enabled: false
+
+# Reflex's event backend (port 8001) isn't behind any path-splitting proxy
+# locally, so it needs its own plain-http URL — unlike the production
+# default, which shares the Ingress host with the web page via path rules.
+urls:
+  publicApiUrl: "http://localhost:8000"
+  adminUrl: "http://localhost:8000/admin"
+  reflexApiUrl: "http://localhost:8001"
+  frontendUrl: "http://localhost:3000"
+
+corsOrigins: "http://localhost:3000"

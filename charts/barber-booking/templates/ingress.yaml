@@ -1,0 +1,83 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "barber-booking.fullname" . }}
+  labels:
+    {{- include "barber-booking.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+        - {{ .Values.ingress.apiHost }}
+      secretName: {{ include "barber-booking.tlsSecretName" . }}
+  {{- end }}
+  rules:
+    # The booking website. Reflex serves the page on :3000 and its own
+    # websocket/upload/health endpoints (/_event, /_upload, /ping, /_health,
+    # /_all_routes) on :8001 — both reachable under this one host, which is
+    # why REFLEX_API_URL (frontend ConfigMap) is set to this same hostname.
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /_event
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
+          - path: /_upload
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
+          - path: /ping
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
+          - path: /_health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
+          - path: /_all_routes
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: events
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+                port:
+                  name: web
+    # The booking API — its own subdomain, kept fully separate so it can
+    # never collide with a Reflex path above (also handy for /docs, /admin).
+    - host: {{ .Values.ingress.apiHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "barber-booking.fullname" . }}-backend
+                port:
+                  number: 8000
+{{- end }}

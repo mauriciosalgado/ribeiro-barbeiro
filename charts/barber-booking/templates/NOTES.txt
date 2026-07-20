@@ -1,0 +1,16 @@
+{{ .Values.shop.name }} is deploying.
+
+{{- if .Values.ingress.enabled }}
+Website:      https://{{ .Values.ingress.host }}
+API docs:     https://{{ .Values.ingress.apiHost }}/docs
+Admin panel:  https://{{ .Values.ingress.apiHost }}/admin
+{{- else }}
+Ingress is disabled. Reach the app with:
+  kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-frontend 3000:3000 8001:8001
+  kubectl port-forward svc/{{ include "barber-booking.fullname" . }}-backend 8000:8000
+{{- end }}
+
+Owner login: {{ .Values.shop.owner.email }} / (the password you set)
+
+Check rollout status:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}

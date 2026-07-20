@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "barber-booking.fullname" . }}-frontend
+  labels:
+    {{- include "barber-booking.labels" . | nindent 4 }}
+spec:
+  # See values.yaml: keep this at 1 — Reflex keeps UI state in memory per
+  # worker, and this chart doesn't wire up its Redis-backed state manager.
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "barber-booking.fullname" . }}-frontend
+  template:
+    metadata:
+      labels:
+        app: {{ include "barber-booking.fullname" . }}-frontend
+    spec:
+      {{- include "barber-booking.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: frontend
+          image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag }}"
+          imagePullPolicy: {{ .Values.image.frontend.pullPolicy }}
+          ports:
+            - name: web
+              containerPort: 3000
+            - name: events
+              containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: {{ include "barber-booking.fullname" . }}-frontend
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            # Reflex compiles the UI on first start, which can take well over
+            # a minute in a fresh container with no build cache — give it
+            # real headroom so it isn't killed mid-compile.
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 10

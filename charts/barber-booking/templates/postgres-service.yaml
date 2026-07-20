@@ -1,0 +1,15 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "barber-booking.fullname" . }}-postgres
+  labels:
+    {{- include "barber-booking.labels" . | nindent 4 }}
+spec:
+  clusterIP: None # headless — StatefulSets address their pod directly
+  selector:
+    app: {{ include "barber-booking.fullname" . }}-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}

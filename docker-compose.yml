@@ -1,0 +1,66 @@
+# The whole barber-shop app, ready to spin up with `docker compose up --build`.
+# It runs out of the box with the dev defaults below — no .env file to create.
+#
+#   backend   the booking API             -> http://localhost:8000  (docs at /docs)
+#   frontend  the booking website         -> http://localhost:3000
+#   smtp      Mailpit, a throwaway inbox  -> http://localhost:8025  (reads sent email)
+#
+# To run a real shop, change the values under "Shop identity" below (and generate
+# a proper JWT_SECRET: `openssl rand -hex 32`). Everything else is local wiring.
+services:
+  backend:
+    build: ./backend
+    pull_policy: build
+    ports:
+      - "8000:8000"
+    environment:
+      # --- Shop identity — change these for YOUR shop ------------------------
+      SHOP_NAME: "Ribeiro Barbeiro"
+      SHOP_TIMEZONE: "Europe/Lisbon"
+      OWNER_NAME: "Owner"
+      OWNER_EMAIL: "owner@theshop.com"
+      OWNER_PASSWORD: "change-me"
+      JWT_SECRET: "dev-only-secret-change-me-to-a-long-random-string"
+      # Starting brand colours; the owner can recolour live from the UI. Any hex.
+      SHOP_BRAND: "#9e7b53"
+      SHOP_BACKGROUND: "#f6f1e9"
+      # Sign-in headline; the owner can change it live from the UI. Empty = no headline.
+      SHOP_HEADLINE: "A sua cadeira está à espera"
+      # --- Local wiring — leave as-is for Docker dev ----------------------
+      DATABASE_URL: "sqlite:////data/barber.db"
+      CORS_ORIGINS: "*"
+      PUBLIC_BASE_URL: "http://localhost:8000"
+      FRONTEND_URL: "http://localhost:3000"
+      SMTP_HOST: "smtp"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "no-reply@theshop.com"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - smtp
+
+  frontend:
+    build: ./frontend
+    pull_policy: build
+    ports:
+      - "3000:3000" # the booking website
+      - "8001:8001" # Reflex's event backend that the browser connects to
+    environment:
+      # Server-side calls from the UI to the booking API (container-to-container).
+      API_URL: http://backend:8000
+      # Browser-facing backend URL, used for the <img> logo and favicon the
+      # browser loads directly (the logo is stored in and served by the backend).
+      PUBLIC_API_URL: http://localhost:8000
+      # Dev only: link the verify banner straight to Mailpit's caught inbox.
+      MAIL_INBOX_URL: http://localhost:8025
+      # Browser-facing link to the backend admin console (backend's public URL).
+      ADMIN_URL: http://localhost:8000/admin
+    depends_on:
+      - backend
+
+  smtp:
+    # Mailpit: a throwaway inbox for dev. Multi-arch, so it runs natively on
+    # Apple Silicon (unlike the older amd64-only MailHog).
+    image: axllent/mailpit
+    ports:
+      - "8025:8025" # web UI to read the caught emails
