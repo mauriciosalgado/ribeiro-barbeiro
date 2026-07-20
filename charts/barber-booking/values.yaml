@@ -89,7 +89,7 @@ imageCredentials:
 ingress:
   enabled: true
   className: nginx
-  host: shop.example.com
+  host: ribeirobarbeiro.com
   apiHost: "" # empty = API stays cluster-internal (recommended). See comment above before setting this.
   annotations: {}
   # cert-manager.io/cluster-issuer: letsencrypt-prod

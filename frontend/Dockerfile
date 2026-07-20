@@ -9,6 +9,9 @@ RUN apt-get update \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/.venv/bin:$PATH"
+# Tells rxconfig.py to unify frontend_port/backend_port onto one port —
+# required by Reflex's production mode below (see rxconfig.py for why).
+ENV REFLEX_SINGLE_PORT=1
 
 # Install dependencies first (cached until the lockfile changes), then the app.
 COPY pyproject.toml uv.lock ./
