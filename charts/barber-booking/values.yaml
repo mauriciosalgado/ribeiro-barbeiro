@@ -33,11 +33,11 @@ existingSecret: ""
 image:
   backend:
     repository: ghcr.io/mauriciosalgado/ribeiro-barbeiro-backend
-    tag: v0.0.1
+    tag: v0.0.3
     pullPolicy: IfNotPresent
   frontend:
     repository: ghcr.io/mauriciosalgado/ribeiro-barbeiro-frontend
-    tag: v0.0.1
+    tag: v0.0.3
     pullPolicy: IfNotPresent
 
 # --- Private registry access --------------------------------------------
