@@ -17,15 +17,51 @@ Two things ArgoCD does **not** do for you, which stay outside this chart:
    registry ArgoCD's cluster can pull from. Point `image.*.repository/tag` at
    the result.
 2. **Secrets.** Don't put `jwtSecret`, `shop.owner.password`, or SMTP
-   credentials in a values file committed to your GitOps repo. Instead:
-   - create a Kubernetes Secret named e.g. `<shop>-backend-secret` with keys
-     `JWT_SECRET`, `OWNER_PASSWORD`, `SMTP_USERNAME`, `SMTP_PASSWORD` — via
-     whatever your GitOps setup already uses for this (Sealed Secrets,
-     External Secrets Operator, SOPS, a cloud secret manager, or just
-     `kubectl create secret` once, out of band), and
-   - set `existingSecret: <that name>` in this shop's values. The chart then
-     skips creating its own Secret and reads from yours. Same pattern for the
-     built-in Postgres's password via `postgresql.existingSecret`.
+   credentials in a values file — committed or not (an uncommitted values
+   file is still a plaintext file sitting on disk, one accidental overwrite
+   away from being gone for good). Instead, create the Secret directly,
+   once, out of band, and point `existingSecret` at its name.
+
+   The simplest way — plain `kubectl`, no extra tooling — one Secret with
+   all four backend keys:
+
+   ```sh
+   kubectl create secret generic ribeiro-backend-secret \
+     --namespace ribeiro-barbeiro \
+     --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+     --from-literal=OWNER_PASSWORD='<the owner login password>' \
+     --from-literal=SMTP_USERNAME='<smtp username>' \
+     --from-literal=SMTP_PASSWORD='<smtp password/app password>'
+   ```
+
+   Then in the shop's values file (this part is safe to commit — it's just
+   a name, not a secret):
+
+   ```yaml
+   existingSecret: "ribeiro-backend-secret"
+   ```
+
+   The chart then skips creating its own Secret and reads from yours. Same
+   pattern for the built-in Postgres's password:
+
+   ```sh
+   kubectl create secret generic ribeiro-postgres-secret \
+     --namespace ribeiro-barbeiro \
+     --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 20)"
+   ```
+   ```yaml
+   postgresql:
+     existingSecret: "ribeiro-postgres-secret"
+   ```
+
+   Two tradeoffs worth knowing about the plain-`kubectl` approach: the
+   Secret itself isn't tracked in git (so it won't show up in a GitOps diff,
+   and needs to be recreated if the cluster/namespace is ever rebuilt), and
+   whoever runs the command needs direct `kubectl` access to the cluster. If
+   you want the Secret's *encrypted* form tracked in git too (so ArgoCD
+   fully owns it, no out-of-band step to remember), look at Sealed Secrets,
+   External Secrets Operator, or SOPS instead — same `existingSecret` wiring
+   either way, only how the Secret gets into the cluster changes.
 
 Example `Application`, in your GitOps repo:
 
