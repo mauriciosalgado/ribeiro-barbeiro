@@ -1,12 +1,12 @@
 {{/*
-Chart/release naming — every resource is prefixed "<release>-barber-booking"
-by default, so multiple shops can be installed in the same namespace without
-colliding. Override the whole prefix with fullnameOverride, or just the
-"barber-booking" part with nameOverride (standard Helm chart conventions —
-rarely needed, but there if you want a shorter/different name).
+Chart/release naming — every resource is prefixed "<release>-<nameOverride>"
+(nameOverride defaults to "barber-booking" in values.yaml, nothing hardcoded
+here), so multiple shops can be installed in the same namespace without
+colliding. Override the whole prefix with fullnameOverride if you want a
+different/shorter resource-name prefix (standard Helm chart convention).
 */}}
 {{- define "barber-booking.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{- define "barber-booking.fullname" -}}
@@ -15,16 +15,6 @@ rarely needed, but there if you want a shorter/different name).
 {{- else -}}
 {{- printf "%s-%s" .Release.Name (include "barber-booking.name" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
-{{- end -}}
-
-{{/*
-Namespace every resource is created in. Defaults to the release's own
-namespace (i.e. whatever `helm install -n <namespace>` set) — the normal way
-to control this. namespaceOverride exists for GitOps tooling that renders
-manifests without setting a release namespace itself.
-*/}}
-{{- define "barber-booking.namespace" -}}
-{{- default .Release.Namespace .Values.namespaceOverride -}}
 {{- end -}}
 
 {{/* Chart name + version, for the standard helm.sh/chart label. */}}
