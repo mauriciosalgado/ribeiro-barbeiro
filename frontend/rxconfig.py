@@ -24,6 +24,10 @@ config = rx.Config(
     app_name="shop",
     frontend_port=3000,
     backend_port=3000 if _single_port else 8001,
+    # This is a real booking site for a real shop, not a Reflex demo/gallery
+    # app — hide the framework's own sticky badge instead of showing it on
+    # every page a customer sees.
+    show_built_with_reflex=False,
     **({"api_url": _api_url} if _api_url else {}),
     plugins=[
         rx.plugins.RadixThemesPlugin(
