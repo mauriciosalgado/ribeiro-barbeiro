@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from itertools import groupby
 
 import httpx
+import jwt
 import reflex as rx
 
 from shop.ui import (
@@ -29,6 +30,28 @@ API_URL = os.environ.get("API_URL", "http://localhost:8000")
 # shop/api.py), so the booking API itself never needs to be reachable from
 # the browser just to show it.
 REFLEX_API_URL = os.environ.get("REFLEX_API_URL", "http://localhost:3000")
+
+# Must match the backend's JWT_SECRET (see backend/app/security.py) — lets us
+# verify an access token's signature locally, with no network call, so we
+# can show the right view (logged out / customer / barber / admin) almost
+# immediately after a page reload instead of waiting on a round-trip to
+# /auth/me first. This is purely an optimistic, faster first paint: the
+# backend never trusts these claims either — every real request re-checks
+# the user/role server-side regardless of what the token says.
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+JWT_ALGORITHM = "HS256"
+
+
+def _decode_access_token(token: str) -> dict | None:
+    """Verify and decode an access token locally; None if invalid/expired/wrong purpose."""
+    try:
+        claims = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if claims.get("purpose") != "access":
+        return None
+    return claims
+
 
 # Browser-facing URL of the admin console (the backend serves it at /admin).
 # Empty by default — the admin console is optional to expose publicly at
@@ -201,6 +224,12 @@ class State(rx.State):
     is_admin: bool = False
     is_verified: bool = False
     barber_id: int = 0  # > 0 when the logged-in user is a barber
+
+    # True once we know which view to show (logged out / customer / barber /
+    # admin) — either from a fast local JWT decode or, for a guest, right
+    # away. Gates the UI so nothing renders with a wrong/default shell for a
+    # moment; see refresh() and shop.py's body()/brand().
+    ui_ready: bool = False
 
     auth_mode: str = "login"  # "login", "register", or "forgot"
     form_email: str = ""
@@ -462,9 +491,29 @@ class State(rx.State):
 
     @rx.event
     async def refresh(self):
-        """Load the data the current user needs, based on their role."""
+        """Load the data the current user needs, based on their role.
+
+        First decodes the access token locally (no network call) so we can
+        set is_admin/barber_id and flip ui_ready almost immediately — this
+        is what lets the UI show the right shell right after reload instead
+        of waiting on the slower /auth/me round-trip below. That round-trip
+        still happens and remains the source of truth: if the token was
+        revoked or its claims are stale, logout() corrects the view again.
+        """
         if not self.token:
+            self.ui_ready = True
             return
+
+        claims = _decode_access_token(self.token)
+        if claims is None:  # locally-verifiable as bad: expired, tampered, wrong secret
+            self.logout()
+            self.ui_ready = True
+            return
+        self.is_admin = bool(claims.get("is_admin", False))
+        self.barber_id = int(claims.get("barber_id", 0))
+        self.ui_ready = True
+        yield  # push the fast, locally-decoded shell to the client right away
+
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             me = await client.get("/auth/me")
             if me.status_code != 200:  # token expired or invalid

@@ -27,6 +27,18 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "barber-booking.frontendConfigMapName" . }}
+          env:
+            # Must match the backend's JWT_SECRET (same Secret) — lets the
+            # frontend verify an access token's signature locally, so it can
+            # show the right view immediately on page load instead of
+            # waiting on a round-trip to the API first. The API itself is
+            # still the source of truth: every real request re-checks the
+            # user/role server-side regardless of what the token claims.
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "barber-booking.backendSecretName" . }}
+                  key: JWT_SECRET
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           livenessProbe:

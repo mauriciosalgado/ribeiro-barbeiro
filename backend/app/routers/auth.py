@@ -14,6 +14,7 @@ from app.database import SessionDep
 from app.email import send_email
 from app.limiter import limiter
 from app.models import User, UserCreate, UserRead, UserUpdate
+from app.models.barber import Barber
 from app.security import (
     CurrentUser,
     authenticate_user,
@@ -137,7 +138,11 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     assert user.id is not None
-    return Token(access_token=create_access_token(user.id))
+    barber = session.exec(select(Barber).where(Barber.user_id == user.id)).first()
+    token = create_access_token(
+        user.id, is_admin=user.is_admin, barber_id=barber.id if barber else 0
+    )
+    return Token(access_token=token)
 
 
 @router.post("/forgot-password")

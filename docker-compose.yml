@@ -47,6 +47,11 @@ services:
     environment:
       # Server-side calls from the UI to the booking API (container-to-container).
       API_URL: http://backend:8000
+      # Must match the backend's JWT_SECRET above: lets the frontend verify an
+      # access token's signature locally (no API call) to show the right view
+      # immediately on page load, instead of waiting on a round-trip to
+      # /auth/me first — see state.py's _decode_access_token.
+      JWT_SECRET: "dev-only-secret-change-me-to-a-long-random-string"
       # Dev only: link the verify banner straight to Mailpit's caught inbox.
       MAIL_INBOX_URL: http://localhost:8025
       # Link to the backend's SQLAdmin console, shown to the owner. In this

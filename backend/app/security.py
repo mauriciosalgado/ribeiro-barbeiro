@@ -38,11 +38,12 @@ def authenticate_user(session: Session, email: str, password: str) -> User | Non
     return None
 
 
-def _create_token(user_id: int, purpose: str) -> str:
+def _create_token(user_id: int, purpose: str, **extra_claims: object) -> str:
     payload = {
         "sub": str(user_id),
         "purpose": purpose,
         "exp": datetime.now(UTC) + TOKEN_TTL,
+        **extra_claims,
     }
     return jwt.encode(payload, get_settings().jwt_secret, algorithm=ALGORITHM)
 
@@ -55,8 +56,20 @@ def _read_token(token: str, purpose: str) -> int:
     return int(payload["sub"])
 
 
-def create_access_token(user_id: int) -> str:
-    return _create_token(user_id, "access")
+def create_access_token(user_id: int, *, is_admin: bool = False, barber_id: int = 0) -> str:
+    """Create an access token.
+
+    ``is_admin``/``barber_id`` are embedded as convenience claims so the
+    frontend can decode them locally (no API round-trip) to pick the right
+    view immediately after a page load — see frontend/shop/state.py's
+    ``_decode_access_token``. The backend itself never trusts these claims:
+    every request still re-checks the real ``User``/``Barber`` rows via
+    ``get_current_user``/``require_admin`` below, so a stale claim (e.g. an
+    admin flag flipped after the token was issued) can't grant access — it
+    only means the frontend's optimistic first paint could be corrected a
+    moment later once a real API call returns.
+    """
+    return _create_token(user_id, "access", is_admin=is_admin, barber_id=barber_id)
 
 
 def create_verification_token(user_id: int) -> str:

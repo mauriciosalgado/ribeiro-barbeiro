@@ -10,24 +10,39 @@ from reflex.style import set_color_mode
 
 from shop.api import api
 from shop.state import REFLEX_API_URL, State
-from shop.ui import BRAND, CARD, INK, PAPER, SHADOW
+from shop.ui import CARD, INK, PAPER, SHADOW
 from shop.views import admin_view, auth_view, barber_view, customer_view, profile_card
 
 
 def brand() -> rx.Component:
-    return rx.hstack(
-        rx.image(
-            src=State.logo_src,
-            height="2.4rem",
-            width="2.4rem",
-            object_fit="contain",
-            border_radius="10px",
-            background="white",
-            padding="2px",
+    """The shop's logo + name in the top bar.
+
+    Like ``body()``, this is gated on ``State.ui_ready``: the logo/name
+    shown here come from ``State``, whose *very first* render is a value
+    frozen into the compiled JS bundle at build time (Reflex's static first
+    paint, served before any WebSocket connects) — not the live warm-process
+    cache, which only affects what the server sends *after* that. So on a
+    cold reload the true shop name would flash for one render regardless of
+    the cache. Showing a blank placeholder instead avoids ever displaying
+    the wrong name, matching the same trade-off used for the login view.
+    """
+    return rx.cond(
+        State.ui_ready,
+        rx.hstack(
+            rx.image(
+                src=State.logo_src,
+                height="2.4rem",
+                width="2.4rem",
+                object_fit="contain",
+                border_radius="10px",
+                background="white",
+                padding="2px",
+            ),
+            rx.heading(State.shop_name, size="5", weight="bold", color=INK),
+            align="center",
+            spacing="3",
         ),
-        rx.heading(State.shop_name, size="5", weight="bold", color=INK),
-        align="center",
-        spacing="3",
+        rx.box(height="2.4rem", width="12rem"),
     )
 
 
@@ -90,22 +105,24 @@ def hero() -> rx.Component:
 
 
 def loading_view() -> rx.Component:
-    """A neutral placeholder shown until hydration finishes.
+    """A blank placeholder shown until we know which view to render.
 
     ``State.token`` lives in the browser's localStorage, so on every fresh
     page load it starts out empty (and ``logged_in`` False) until a
-    hydrate round-trip syncs the real value — this is per-browser private
-    data, so unlike the shop's name/theme it can't be pre-warmed from a
-    shared cache. Showing this instead of the real body avoids ever
-    flashing the *wrong* one (sign-in card for someone already logged in,
-    or vice versa) while that round-trip is in flight.
+    hydrate round-trip syncs the real value and ``refresh()`` decodes it
+    (see state.py's ``ui_ready``) — this is per-browser private data, so
+    unlike the shop's name/theme it can't be pre-warmed from a shared
+    cache. A plain blank box (no spinner, no skeleton) avoids ever
+    flashing the *wrong* content (sign-in card for someone already logged
+    in, or vice versa) while that's in flight, without drawing attention
+    to the wait itself.
     """
-    return rx.center(rx.spinner(size="3", color=BRAND), min_height="40vh", width="100%")
+    return rx.box(min_height="40vh", width="100%")
 
 
 def body() -> rx.Component:
     return rx.cond(
-        State.is_hydrated,
+        State.ui_ready,
         rx.cond(
             State.logged_in,
             rx.vstack(
@@ -206,7 +223,12 @@ app = rx.App(
         rx.el.link(rel="icon", href=f"{REFLEX_API_URL}/logo"),
     ],
 )
-app.add_page(index, route="/", title="Marcar · Barbearia", on_load=[State.init, State.refresh])
+app.add_page(
+    index,
+    route="/",
+    title=f"Marcar · {State.shop_name}",
+    on_load=[State.init, State.refresh],
+)
 
 
 def reset_password_page() -> rx.Component:
