@@ -236,6 +236,28 @@ postgresql:
   existingSecret: "ribeiro-postgres-secret" # POSTGRES_PASSWORD key
 ```
 
+## Advanced / rarely-needed values
+
+These have working defaults for a normal deploy — only touch them if you have
+a specific reason to.
+
+- **`corsOrigins`** — the API's CORS allow-list. Defaults to
+  `https://<ingress.host>`, which is correct whenever the frontend is reached
+  at `ingress.host` (the normal case). Only set this if the booking website
+  is also reachable under some other origin.
+- **`urls.adminUrl` / `urls.reflexApiUrl` / `urls.frontendUrl`** — override
+  the public URLs the app is built with, instead of deriving them from
+  `ingress.host`/`apiHost` (which assumes a real Ingress in front, over
+  HTTPS). Leave these empty for a normal deploy. They exist for setups
+  without that Ingress — e.g. `values-local.yaml`, where the app is reached
+  via plain-http `kubectl port-forward` and there's no Ingress splitting
+  paths — see "Local testing" below.
+- **`frontend.mailInboxUrl`** — dev-only convenience link. When set, a
+  "Check Inbox" button appears next to the login/verify/reset forms,
+  linking straight to a caught-email tool (e.g. Mailpit's web UI), so you
+  can read verification/reset emails during local testing without a real
+  SMTP provider. Leave empty in production — see `values-local.yaml`.
+
 ## Local testing (optional, no registry)
 
 Not part of the GitOps flow above — just for trying the chart out by hand on

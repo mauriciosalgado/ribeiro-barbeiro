@@ -104,7 +104,7 @@ ingress:
                     # in-cluster certificate is needed. Customers still see
                     # https:// (Cloudflare's edge cert), which is why the
                     # default urls below still assume https.
-    secretName: "" # defaults to "<release-name>-tls" if empty
+    secretName: "" # defaults to "<release-name>-tls-secret" if empty
 
 # CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty —
 # only change this if the frontend is reachable under a different origin.

@@ -39,15 +39,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 The database connection string the backend uses. SQLite needs no secret;
 Postgres (built-in or external) is assembled here so it only has to be
-figured out once.
-*/}}
-{{/*
-Built with a $(POSTGRES_PASSWORD) reference that Kubernetes expands at
-container start — see the backend Deployment's "env:" list, which defines
-POSTGRES_PASSWORD (from the Postgres Secret) right before DATABASE_URL so
-the substitution can see it. This only works for values under "env:", not
-"envFrom:", which is why DATABASE_URL is set there directly instead of
-living in the ConfigMap with the other variables.
+figured out once. Built with a $(POSTGRES_PASSWORD) reference that
+Kubernetes expands at container start — see the backend Deployment's "env:"
+list, which defines POSTGRES_PASSWORD (from the Postgres Secret) right
+before DATABASE_URL so the substitution can see it. This only works for
+values under "env:", not "envFrom:", which is why DATABASE_URL is set there
+directly instead of living in the ConfigMap with the other variables.
 */}}
 {{- define "barber-booking.databaseUrl" -}}
 {{- if eq .Values.database.type "postgres" -}}
