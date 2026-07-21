@@ -58,12 +58,21 @@ sqlite:////data/barber.db
 {{- end -}}
 {{- end -}}
 
-{{/* CORS allow-list: explicit value, or derived from the ingress host. */}}
+{{/*
+CORS allow-list: explicit value, or derived from the ingress host — but only
+when Ingress is actually the thing serving traffic. If ingress.enabled is
+false, ingress.host describes nothing real (it may still hold its chart
+default, or a stale domain from a previous config), so falling back to it
+would silently allow-list an origin nobody can reach. Fail instead of
+guessing — see corsOrigins' comment in values.yaml for what to set.
+*/}}
 {{- define "barber-booking.corsOrigins" -}}
 {{- if .Values.corsOrigins -}}
 {{ .Values.corsOrigins }}
-{{- else -}}
+{{- else if .Values.ingress.enabled -}}
 https://{{ .Values.ingress.host }}
+{{- else -}}
+{{ fail "corsOrigins is required when ingress.enabled=false — set it to the origin the browser actually uses (e.g. \"http://<LoadBalancer-IP>:3000\" or a private DNS/VPN name). See values.yaml's corsOrigins comment." }}
 {{- end -}}
 {{- end -}}
 
@@ -77,29 +86,47 @@ https://{{ .Values.ingress.host }}
 
 {{/*
 Public-facing URLs. reflexApiUrl/frontendUrl default to "https://<ingress
-host>" — correct once real Ingress + TLS + DNS are in front. adminUrl stays
-empty (hiding the admin link in the UI) unless ingress.apiHost is set — and
-setting apiHost publishes the whole FastAPI app to the internet, not just
-/admin, so it's an intentional opt-in (see the long comment above
-ingress.apiHost in values.yaml). Each of these can be overridden
-independently under .Values.urls — used by values-local.yaml, where there's
-no Ingress at all and the app is reached via plain-http `kubectl
-port-forward` instead.
+host>", but ONLY when ingress.enabled is true — that default assumes a real
+Ingress + TLS + DNS is actually in front of the app. With ingress.enabled=
+false, ingress.host doesn't route anywhere (it may just be sitting at its
+chart default, or a stale domain from switching off Ingress later), so
+falling back to it would point the browser's websocket at a dead/wrong
+address instead of wherever the app is really being reached (LoadBalancer
+IP, NodePort, port-forward, VPN...). We fail with a concrete pointer to
+urls.reflexApiUrl/frontendUrl instead of guessing wrong silently — see
+values-local.yaml for a worked no-Ingress example. adminUrl stays empty
+(hiding the admin link in the UI) unless ingress.apiHost is set AND Ingress
+is enabled — setting apiHost publishes the whole FastAPI app to the
+internet, not just /admin, so it's an intentional opt-in (see the long
+comment above ingress.apiHost in values.yaml). Each of these can be
+overridden independently under .Values.urls regardless of ingress.enabled.
 */}}
 {{- define "barber-booking.adminUrl" -}}
 {{- if .Values.urls.adminUrl -}}
 {{ .Values.urls.adminUrl }}
-{{- else if .Values.ingress.apiHost -}}
+{{- else if and .Values.ingress.enabled .Values.ingress.apiHost -}}
 {{ printf "https://%s/admin" .Values.ingress.apiHost }}
 {{- end -}}
 {{- end -}}
 
 {{- define "barber-booking.reflexApiUrl" -}}
-{{- .Values.urls.reflexApiUrl | default (printf "https://%s" .Values.ingress.host) -}}
+{{- if .Values.urls.reflexApiUrl -}}
+{{ .Values.urls.reflexApiUrl }}
+{{- else if .Values.ingress.enabled -}}
+{{ printf "https://%s" .Values.ingress.host }}
+{{- else -}}
+{{ fail "urls.reflexApiUrl is required when ingress.enabled=false — set it to the address the browser actually uses to reach the frontend (e.g. \"http://<LoadBalancer-IP>:3000\"). See values-local.yaml for a worked example." }}
+{{- end -}}
 {{- end -}}
 
 {{- define "barber-booking.frontendUrl" -}}
-{{- .Values.urls.frontendUrl | default (printf "https://%s" .Values.ingress.host) -}}
+{{- if .Values.urls.frontendUrl -}}
+{{ .Values.urls.frontendUrl }}
+{{- else if .Values.ingress.enabled -}}
+{{ printf "https://%s" .Values.ingress.host }}
+{{- else -}}
+{{ fail "urls.frontendUrl is required when ingress.enabled=false — set it to the address customers use to reach the site (used in password-reset/verification email links). See values-local.yaml for a worked example." }}
+{{- end -}}
 {{- end -}}
 
 {{/* Name of the Secret holding JWT_SECRET/OWNER_PASSWORD/SMTP_*. */}}

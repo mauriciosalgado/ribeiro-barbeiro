@@ -106,20 +106,26 @@ ingress:
                     # default urls below still assume https.
     secretName: "" # defaults to "<release-name>-tls-secret" if empty
 
-# CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty —
-# only change this if the frontend is reachable under a different origin.
-corsOrigins: ""
+# CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty
+# AND ingress.enabled=true. With ingress.enabled=false, there's no Ingress
+# host to derive anything from — you MUST set this explicitly (the chart
+# fails the install otherwise, rather than silently allow-listing a domain
+# nobody can reach). See values-local.yaml for a worked no-Ingress example.
+#
+# Cloudflare Tunnel (not the in-chart Ingress) terminates TLS and routes
+# ribeirobarbeiro.com to this Service, so ingress.enabled stays false here
+# but the real public origin is still https://ribeirobarbeiro.com.
+corsOrigins: "https://ribeirobarbeiro.com"
 
 # Advanced: override the public URLs directly instead of deriving them from
-# ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Leave
-# these empty for a normal deployment. Used by values-local.yaml, where the
-# app is reached with plain-http `kubectl port-forward` and there's no
-# Ingress splitting paths at all.
+# ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Required
+# here because ingress.enabled=false (Cloudflare Tunnel routes instead) — the
+# chart can't derive these from an Ingress that isn't in front of anything.
 urls:
-  adminUrl: "" # link to the SQLAdmin console. Empty (default) hides it in the UI, UNLESS
-               # ingress.apiHost is set, in which case it defaults to "https://<apiHost>/admin"
-  reflexApiUrl: "" # browser -> Reflex's own event backend (websocket state + logo proxy). default: https://<host>
-  frontendUrl: "" # backend's password-reset/verification email links. default: https://<host>
+  adminUrl: "" # link to the SQLAdmin console. Empty (default) hides it in the UI.
+  reflexApiUrl: "https://ribeirobarbeiro.com" # browser -> Reflex's own event backend
+                                               # (websocket state + logo proxy).
+  frontendUrl: "https://ribeirobarbeiro.com" # password-reset/verification email links.
 
 # --- Email (required for real accounts to verify/reset passwords) ------
 email:
