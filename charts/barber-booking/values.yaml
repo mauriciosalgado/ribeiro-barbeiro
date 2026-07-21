@@ -107,25 +107,32 @@ ingress:
     secretName: "" # defaults to "<release-name>-tls-secret" if empty
 
 # CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty
-# AND ingress.enabled=true. With ingress.enabled=false, there's no Ingress
-# host to derive anything from — you MUST set this explicitly (the chart
-# fails the install otherwise, rather than silently allow-listing a domain
-# nobody can reach). See values-local.yaml for a worked no-Ingress example.
-#
-# Cloudflare Tunnel (not the in-chart Ingress) terminates TLS and routes
-# ribeirobarbeiro.com to this Service, so ingress.enabled stays false here
-# but the real public origin is still https://ribeirobarbeiro.com.
-corsOrigins: "*" # TODO: narrow back to "https://ribeirobarbeiro.com" once testing settles
+# AND ingress.enabled=true, otherwise to "http://localhost:3000" (see the
+# urls: block below for why "localhost" is a real, working default even
+# without Ingress).
+corsOrigins: ""
 
 # Advanced: override the public URLs directly instead of deriving them from
-# ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Required
-# here because ingress.enabled=false (Cloudflare Tunnel routes instead) — the
-# chart can't derive these from an Ingress that isn't in front of anything.
+# ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Left
+# empty here on purpose — this repo is deployed both publicly (Cloudflare
+# Tunnel routing ribeirobarbeiro.com, ingress.enabled=false) and privately
+# for testing (frontend.service.type=LoadBalancer, ingress.enabled=false).
+# Both have ingress.enabled=false, so they can't be told apart from inside
+# this chart — only the ArgoCD Application manifest (mordor repo,
+# helm/base/ribeiro-barbeiro.yaml) knows which mode is active at any given
+# time. Set urls.reflexApiUrl/frontendUrl (and narrow corsOrigins) to
+# "https://ribeirobarbeiro.com" THERE, in that Application's
+# spec.sources[0].helm.valuesObject, only while the Tunnel is the real
+# entry point. Leave them empty (as here) while testing via the
+# LoadBalancer IP — with ingress.enabled=false and nothing set, these
+# default to "http://localhost:3000", which Reflex's own frontend JS
+# rewrites at runtime to whatever host the browser actually used (see
+# templates/_helpers.tpl's comment for the full mechanism), so it keeps
+# working over the LoadBalancer IP with zero config.
 urls:
   adminUrl: "" # link to the SQLAdmin console. Empty (default) hides it in the UI.
-  reflexApiUrl: "https://ribeirobarbeiro.com" # browser -> Reflex's own event backend
-                                               # (websocket state + logo proxy).
-  frontendUrl: "https://ribeirobarbeiro.com" # password-reset/verification email links.
+  reflexApiUrl: "" # browser -> Reflex's own event backend (websocket state + logo proxy).
+  frontendUrl: "" # password-reset/verification email links.
 
 # --- Email (required for real accounts to verify/reset passwords) ------
 email:
