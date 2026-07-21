@@ -222,11 +222,16 @@ secret store.
 
 ### Kubernetes
 
-A Helm chart lives in `charts/barber-booking/` — one install per shop, with
-an optional built-in Postgres, designed to be deployed via GitOps (e.g.
-ArgoCD referencing it directly from this repo) or `helm install` by hand.
-See `charts/barber-booking/README.md` for the ArgoCD setup, the first-shop
-checklist, and secrets handling.
+This repo builds and publishes this shop's own backend/frontend images
+(`.github/workflows/build-images.yml`, on a `v*.*.*` tag). The Kubernetes
+Helm chart itself is **not** kept here — it's published once, centrally,
+from the [barber-booking](https://github.com/mauriciosalgado/barber-booking)
+template repo as a versioned OCI artifact
+(`oci://ghcr.io/mauriciosalgado/charts/barber-booking`), and this shop's
+ArgoCD `Application` (in the `mordor` GitOps repo) pins to a specific
+published chart version plus this shop's own values (image repositories/
+tags, shop name, ingress host, etc.) — see that chart's README for the
+values reference.
 
 ## Known limitations
 
