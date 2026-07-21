@@ -1,6 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  namespace: {{ include "barber-booking.namespace" . }}
   name: {{ include "barber-booking.fullname" . }}-frontend
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}

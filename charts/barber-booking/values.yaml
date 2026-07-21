@@ -1,6 +1,17 @@
 # Default values for barber-booking. One install = one shop.
 # Override with your own values-<shop>.yaml, e.g.:
-#   helm install ribeiro ./charts/barber-booking -f values-ribeiro.yaml
+#   helm install ribeiro ./charts/barber-booking -f values-ribeiro.yaml -n ribeiro --create-namespace
+
+# --- Naming & namespace ----------------------------------------------------
+# The normal way to control where a shop lands is `helm install -n <namespace>
+# --create-namespace` (every release already gets its own namespace this way)
+# and to pick a distinct <release-name> (every resource is named
+# "<release-name>-barber-booking" by default). The overrides below exist for
+# the less common cases — e.g. GitOps tooling that renders manifests without
+# setting a release namespace, or wanting a shorter/custom resource name.
+nameOverride: "" # replace the "barber-booking" part of resource names
+fullnameOverride: "" # replace the whole "<release>-barber-booking" prefix
+namespaceOverride: "" # force a namespace instead of using the release's own
 
 # --- Shop identity ---------------------------------------------------------
 shop:

@@ -1,6 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  namespace: {{ include "barber-booking.namespace" . }}
   name: {{ include "barber-booking.fullname" . }}-frontend
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}

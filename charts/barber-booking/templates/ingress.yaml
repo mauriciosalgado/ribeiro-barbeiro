@@ -2,6 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
+  namespace: {{ include "barber-booking.namespace" . }}
   name: {{ include "barber-booking.fullname" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}

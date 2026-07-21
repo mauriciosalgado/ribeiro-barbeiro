@@ -6,6 +6,7 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
+  namespace: {{ include "barber-booking.namespace" . }}
   name: {{ include "barber-booking.fullname" . }}-postgres
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}

@@ -1,13 +1,54 @@
 {{/*
 Chart/release naming — every resource is prefixed "<release>-barber-booking"
-so multiple shops can be installed in the same namespace without colliding.
+by default, so multiple shops can be installed in the same namespace without
+colliding. Override the whole prefix with fullnameOverride, or just the
+"barber-booking" part with nameOverride (standard Helm chart conventions —
+rarely needed, but there if you want a shorter/different name).
 */}}
-{{- define "barber-booking.fullname" -}}
-{{- printf "%s-barber-booking" .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- define "barber-booking.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "barber-booking.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name (include "barber-booking.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Namespace every resource is created in. Defaults to the release's own
+namespace (i.e. whatever `helm install -n <namespace>` set) — the normal way
+to control this. namespaceOverride exists for GitOps tooling that renders
+manifests without setting a release namespace itself.
+*/}}
+{{- define "barber-booking.namespace" -}}
+{{- default .Release.Namespace .Values.namespaceOverride -}}
+{{- end -}}
+
+{{/* Chart name + version, for the standard helm.sh/chart label. */}}
+{{- define "barber-booking.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Full set of recommended labels for every resource. Selector labels (used in
+Deployment/StatefulSet matchLabels, which are immutable after creation) live
+separately below so this can safely gain more labels over time without
+breaking `helm upgrade` on existing releases.
+*/}}
 {{- define "barber-booking.labels" -}}
-app.kubernetes.io/name: barber-booking
+helm.sh/chart: {{ include "barber-booking.chart" . }}
+{{ include "barber-booking.selectorLabels" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "barber-booking.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "barber-booking.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 

@@ -152,6 +152,26 @@ That's the whole first-shop checklist. Everything else (database choice,
 replicas, resource limits, CORS) has a working default — only touch it if
 you have a specific reason to (see below).
 
+## Naming & namespace
+
+The normal way to isolate a shop is `helm install <release-name> ... -n <namespace>
+--create-namespace`: every resource is named `<release-name>-barber-booking`,
+and lands in whatever namespace you pass to `-n`/`--namespace` — one shop per
+release name, one namespace per shop is a common/simple layout. Nothing in
+`values.yaml` needs to change for this.
+
+Three overrides exist for less common cases (e.g. GitOps tooling that renders
+manifests without setting a release namespace, or wanting shorter/custom
+resource names):
+
+- `nameOverride` — replace the `barber-booking` part of resource names.
+- `fullnameOverride` — replace the whole `<release-name>-barber-booking`
+  prefix, e.g. set it to `ribeiro` to get plain `ribeiro-backend`,
+  `ribeiro-frontend`, etc.
+- `namespaceOverride` — force resources into a specific namespace regardless
+  of the release's own namespace. Leave empty and use `-n`/`--namespace`
+  instead unless you have a specific reason not to.
+
 ## Private registry access
 
 If `image.*.repository` points at a private image (e.g. a GHCR package set
