@@ -381,6 +381,22 @@ directly without the frontend in front — but keep in mind
 [the note above](#first-shop--what-to-configure) about `ingress.apiHost`:
 the same "now it's fully public" tradeoff applies here too.
 
+With `ingress.enabled: false`, `urls.reflexApiUrl`/`frontendUrl`/
+`corsOrigins` default to `http://localhost:3000` instead of trying to derive
+a public hostname that doesn't exist yet. This isn't a placeholder that only
+works for literal `localhost`: Reflex's own frontend JS treats `localhost`
+as a sentinel and swaps it for whatever host the browser actually used to
+load the page before opening the state-sync websocket — so booking, login,
+and the admin console all keep working over that `LoadBalancer`/`NodePort`/
+`port-forward` address with nothing to configure, and without any of it
+having to be a public, internet-reachable address. The one gap: the shop's
+logo/favicon (plain `<img>`/`<link>` tags, not routed through that JS
+helper) and any password-reset/verification emails (opened outside any
+browser session tied to this cluster) won't resolve `localhost` for anyone
+but you — both fail harmlessly until you're ready for real customers, at
+which point set `urls.reflexApiUrl`/`frontendUrl` to a real reachable
+address (LAN IP, VPN/Tailscale hostname, or public domain via Ingress).
+
 ## Why backend/frontend replicas stay at 1
 
 - **Backend**: SQLite is a single file (one writer at a time), and the login

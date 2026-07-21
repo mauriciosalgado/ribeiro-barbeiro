@@ -34,13 +34,10 @@ image:
 ingress:
   enabled: false
 
-# Reflex's own backend (frontend and backend share one port in production —
-# see rxconfig.py) isn't behind any path-splitting proxy locally, so it
-# needs its own plain-http URL — unlike the production default, which
-# shares the Ingress host with the web page since it's all one port anyway.
+# reflexApiUrl/frontendUrl/corsOrigins already default to localhost:3000
+# whenever ingress.enabled=false (see values.yaml's urls: comment) — nothing
+# to set here. adminUrl is the one exception: it stays empty (hiding the
+# admin link) unless given an explicit address, since exposing /admin is
+# always an opt-in, not a default.
 urls:
   adminUrl: "http://localhost:8000/admin"
-  reflexApiUrl: "http://localhost:3000"
-  frontendUrl: "http://localhost:3000"
-
-corsOrigins: "http://localhost:3000"

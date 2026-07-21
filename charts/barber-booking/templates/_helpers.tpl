@@ -60,11 +60,11 @@ sqlite:////data/barber.db
 
 {{/*
 CORS allow-list: explicit value, or derived from the ingress host — but only
-when Ingress is actually the thing serving traffic. If ingress.enabled is
-false, ingress.host describes nothing real (it may still hold its chart
-default, or a stale domain from a previous config), so falling back to it
-would silently allow-list an origin nobody can reach. Fail instead of
-guessing — see corsOrigins' comment in values.yaml for what to set.
+when Ingress is actually the thing serving traffic. Without Ingress, there's
+no fixed public origin to derive, so this falls back to the same "localhost"
+placeholder as values-local.yaml/reflexApiUrl below — see that definition's
+comment for why "localhost" is a real, working default and not just a dev
+stand-in.
 */}}
 {{- define "barber-booking.corsOrigins" -}}
 {{- if .Values.corsOrigins -}}
@@ -72,7 +72,7 @@ guessing — see corsOrigins' comment in values.yaml for what to set.
 {{- else if .Values.ingress.enabled -}}
 https://{{ .Values.ingress.host }}
 {{- else -}}
-{{ fail "corsOrigins is required when ingress.enabled=false — set it to the origin the browser actually uses (e.g. \"http://<LoadBalancer-IP>:3000\" or a private DNS/VPN name). See values.yaml's corsOrigins comment." }}
+http://localhost:3000
 {{- end -}}
 {{- end -}}
 
@@ -86,18 +86,27 @@ https://{{ .Values.ingress.host }}
 
 {{/*
 Public-facing URLs. reflexApiUrl/frontendUrl default to "https://<ingress
-host>", but ONLY when ingress.enabled is true — that default assumes a real
-Ingress + TLS + DNS is actually in front of the app. With ingress.enabled=
-false, ingress.host doesn't route anywhere (it may just be sitting at its
-chart default, or a stale domain from switching off Ingress later), so
-falling back to it would point the browser's websocket at a dead/wrong
-address instead of wherever the app is really being reached (LoadBalancer
-IP, NodePort, port-forward, VPN...). We fail with a concrete pointer to
-urls.reflexApiUrl/frontendUrl instead of guessing wrong silently — see
-values-local.yaml for a worked no-Ingress example. adminUrl stays empty
-(hiding the admin link in the UI) unless ingress.apiHost is set AND Ingress
-is enabled — setting apiHost publishes the whole FastAPI app to the
-internet, not just /admin, so it's an intentional opt-in (see the long
+host>" when Ingress is enabled — that assumes a real Ingress + TLS + DNS is
+in front of the app. Without Ingress there's no fixed public address to
+derive, so both fall back to "http://localhost:3000" instead — the exact
+same value values-local.yaml sets explicitly for port-forward. This isn't a
+placeholder that only works for literal localhost: Reflex's own frontend JS
+(web/utils/state.js, SAME_DOMAIN_HOSTNAMES) treats "localhost" as a sentinel
+and swaps it for whatever host the browser actually used to load the page
+(window.location.hostname) before opening the state-sync websocket — so
+this one default transparently keeps working whether you reach the Service
+via `kubectl port-forward`, a NodePort, or a LoadBalancer IP, with no
+per-environment address to configure. The one thing that sentinel swap
+*doesn't* cover is anything baked into plain, static HTML/markup instead of
+going through that JS helper — namely the shop's logo/favicon <link>/<img>
+tags (shop.py, state.py), and this FRONTEND_URL's use in emailed
+password-reset/verification links, which are opened outside any browser
+session tied to this cluster. Those simply need a real reachable address
+(set urls.reflexApiUrl/frontendUrl explicitly) once you're serving real
+customers — see values.yaml's comment above urls: for the trade-off. adminUrl
+stays empty (hiding the admin link in the UI) unless ingress.apiHost is set
+AND Ingress is enabled — setting apiHost publishes the whole FastAPI app to
+the internet, not just /admin, so it's an intentional opt-in (see the long
 comment above ingress.apiHost in values.yaml). Each of these can be
 overridden independently under .Values.urls regardless of ingress.enabled.
 */}}
@@ -115,7 +124,7 @@ overridden independently under .Values.urls regardless of ingress.enabled.
 {{- else if .Values.ingress.enabled -}}
 {{ printf "https://%s" .Values.ingress.host }}
 {{- else -}}
-{{ fail "urls.reflexApiUrl is required when ingress.enabled=false — set it to the address the browser actually uses to reach the frontend (e.g. \"http://<LoadBalancer-IP>:3000\"). See values-local.yaml for a worked example." }}
+http://localhost:3000
 {{- end -}}
 {{- end -}}
 
@@ -125,7 +134,7 @@ overridden independently under .Values.urls regardless of ingress.enabled.
 {{- else if .Values.ingress.enabled -}}
 {{ printf "https://%s" .Values.ingress.host }}
 {{- else -}}
-{{ fail "urls.frontendUrl is required when ingress.enabled=false — set it to the address customers use to reach the site (used in password-reset/verification email links). See values-local.yaml for a worked example." }}
+http://localhost:3000
 {{- end -}}
 {{- end -}}
 
