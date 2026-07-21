@@ -101,9 +101,9 @@ spec:
 ```
 
 **No separate values file at all** — inline the overrides directly in the
-`Application` via `helm.values` (a plain YAML string, same shape as
-`values.yaml`). Nothing else to commit — this manifest *is* the shop's
-config:
+`Application` via `helm.valuesObject` (structured YAML, nested right in the
+manifest — cleaner than `helm.values`, which takes the same content as a raw
+YAML string). Nothing else to commit — this manifest *is* the shop's config:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -118,7 +118,7 @@ spec:
     targetRevision: main # or a tag, e.g. v1.0.0
     path: charts/barber-booking
     helm:
-      values: |
+      valuesObject:
         existingSecret: "ribeiro-backend-secret"
         shop:
           name: "Ribeiro Barbeiro"
