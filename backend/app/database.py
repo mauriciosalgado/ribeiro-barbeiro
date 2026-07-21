@@ -12,7 +12,10 @@ from app.config import get_settings
 url = get_settings().database_url
 # SQLite (local dev) needs this flag to work across FastAPI's threads.
 connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-engine = create_engine(url, connect_args=connect_args)
+# pool_pre_ping checks each connection with a cheap "SELECT 1" before reuse,
+# so a dropped connection (DB restart, network blip, cloud proxy idle
+# timeout) causes a fresh reconnect instead of a random request failure.
+engine = create_engine(url, connect_args=connect_args, pool_pre_ping=True)
 
 if url.startswith("sqlite"):
     # SQLite ignores foreign keys unless asked; turn them on so ON DELETE CASCADE

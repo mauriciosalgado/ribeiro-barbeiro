@@ -12,6 +12,7 @@ images run any shop.
 ```
 backend/             FastAPI + SQLModel API with /admin console
 frontend/            Reflex UI (pure Python)
+charts/              Helm chart for deploying to Kubernetes (see Deploy below)
 docker-compose.yml   single config surface — edit and run
 ```
 

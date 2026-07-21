@@ -182,10 +182,14 @@ frontend:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      # Reflex's production build compiles the frontend on first boot, which
+      # briefly spikes memory well above its ~200Mi steady-state usage.
+      # Measured OOMKilled at 512Mi under Kubernetes' no-swap memory
+      # accounting; 1Gi gives a safe margin (confirmed stable in testing).
+      memory: 1Gi
   # Dev-only convenience link to a caught-email inbox (e.g. Mailpit). Leave
   # empty in production.
   mailInboxUrl: ""
