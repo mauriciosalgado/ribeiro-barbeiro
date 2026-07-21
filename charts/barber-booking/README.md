@@ -100,8 +100,10 @@ spec:
       - CreateNamespace=true
 ```
 
-**Values file alongside the chart, same repo** — use single `source` with a
-plain relative `valueFiles` path instead:
+**No separate values file at all** — inline the overrides directly in the
+`Application` via `helm.values` (a plain YAML string, same shape as
+`values.yaml`). Nothing else to commit — this manifest *is* the shop's
+config:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -116,8 +118,25 @@ spec:
     targetRevision: main # or a tag, e.g. v1.0.0
     path: charts/barber-booking
     helm:
-      valueFiles:
-        - ../../shops/ribeiro/values.yaml
+      values: |
+        existingSecret: "ribeiro-backend-secret"
+        shop:
+          name: "Ribeiro Barbeiro"
+          owner:
+            name: "Paquito"
+            email: "paquito@ribeirobarbeiro.pt"
+        image:
+          backend:
+            repository: ghcr.io/you/barber-booking-backend
+            tag: "v1.0.0"
+          frontend:
+            repository: ghcr.io/you/barber-booking-frontend
+            tag: "v1.0.0"
+        ingress:
+          host: shop.ribeirobarbeiro.pt
+        email:
+          smtpHost: "smtp.your-provider.com"
+          smtpFrom: "no-reply@ribeirobarbeiro.pt"
   destination:
     server: https://kubernetes.default.svc
     namespace: ribeiro-barbeiro
@@ -128,6 +147,13 @@ spec:
     syncOptions:
       - CreateNamespace=true
 ```
+
+This `Application` is safe to commit as-is: nothing above is a secret,
+`existingSecret` is just a name pointing at a Secret created out-of-band
+(see "Secrets" above). Only reach for a separate values file (the two
+examples above) once you're managing enough shops that repeating this block
+per shop gets unwieldy, or you want a diffable values file reviewed
+separately from the `Application`/destination/sync settings.
 
 One `Application` per shop; each just needs its own values file and its own
 `existingSecret`.
