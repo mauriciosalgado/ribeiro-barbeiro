@@ -10,7 +10,7 @@ from reflex.style import set_color_mode
 
 from shop.api import api
 from shop.state import REFLEX_API_URL, State
-from shop.ui import CARD, INK, PAPER, SHADOW
+from shop.ui import BRAND, CARD, INK, PAPER, SHADOW
 from shop.views import admin_view, auth_view, barber_view, customer_view, profile_card
 
 
@@ -89,21 +89,39 @@ def hero() -> rx.Component:
     )
 
 
+def loading_view() -> rx.Component:
+    """A neutral placeholder shown until hydration finishes.
+
+    ``State.token`` lives in the browser's localStorage, so on every fresh
+    page load it starts out empty (and ``logged_in`` False) until a
+    hydrate round-trip syncs the real value — this is per-browser private
+    data, so unlike the shop's name/theme it can't be pre-warmed from a
+    shared cache. Showing this instead of the real body avoids ever
+    flashing the *wrong* one (sign-in card for someone already logged in,
+    or vice versa) while that round-trip is in flight.
+    """
+    return rx.center(rx.spinner(size="3", color=BRAND), min_height="40vh", width="100%")
+
+
 def body() -> rx.Component:
     return rx.cond(
-        State.logged_in,
-        rx.vstack(
-            rx.match(
-                State.role,
-                ("admin", admin_view()),
-                ("barber", barber_view()),
-                customer_view(),
+        State.is_hydrated,
+        rx.cond(
+            State.logged_in,
+            rx.vstack(
+                rx.match(
+                    State.role,
+                    ("admin", admin_view()),
+                    ("barber", barber_view()),
+                    customer_view(),
+                ),
+                profile_card(),
+                spacing="5",
+                width="100%",
             ),
-            profile_card(),
-            spacing="5",
-            width="100%",
+            rx.vstack(hero(), auth_view(), spacing="5", width="100%"),
         ),
-        rx.vstack(hero(), auth_view(), spacing="5", width="100%"),
+        loading_view(),
     )
 
 
