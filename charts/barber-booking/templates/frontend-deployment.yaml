@@ -17,6 +17,10 @@ spec:
         app: {{ include "barber-booking.fullname" . }}-frontend
     spec:
       {{- include "barber-booking.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # matches the "app" user created in frontend/Dockerfile
+        runAsGroup: 1000
       containers:
         - name: frontend
           image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag }}"

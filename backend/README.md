@@ -38,7 +38,7 @@ uv run serve
 uv run pytest
 ```
 
-107 tests covering: slot logic, booking rules, email verification, password
+109 tests covering: slot logic, booking rules, email verification, password
 reset, closures, services, recurrence, and permissions.
 
 ## Configuration
@@ -50,7 +50,7 @@ All values in `.env.example` are required — a missing one stops the app at sta
 | `SHOP_NAME` | Header, emails, API title |
 | `SHOP_TIMEZONE` | IANA timezone for scheduling |
 | `OWNER_EMAIL`, `OWNER_NAME`, `OWNER_PASSWORD` | Admin account, seeded on first start |
-| `JWT_SECRET` | Signs all tokens — `openssl rand -hex 32` |
+| `JWT_SECRET` | Signs all tokens — `openssl rand -hex 32`. The frontend needs this same value too, to verify tokens locally (see frontend/README.md) |
 | `DATABASE_URL` | `sqlite:///./barber.db` (dev) or `postgresql://…` (prod) |
 | `CORS_ORIGINS` | Allowed browser origins, comma-separated or `*` |
 | `PUBLIC_BASE_URL` | Fallback base URL for email links if `FRONTEND_URL` is unset |
@@ -73,7 +73,11 @@ All values in `.env.example` are required — a missing one stops the app at sta
 ## Auth
 
 - Passwords: **bcrypt**.
-- Login: **JWT** (HS256, 24h, signed with `JWT_SECRET`).
+- Login: **JWT** (HS256, 24h, signed with `JWT_SECRET`). Also carries
+  `is_admin`/`barber_id` as advisory claims so the frontend can read the
+  user's role locally, with no API call — these are never trusted for
+  authorization here; every request still re-checks the DB (see
+  `get_current_user`/`require_admin` in `security.py`).
 - Verification + password-reset: same JWT with a `purpose` claim — not interchangeable.
 - Admin console: **session cookies** (same credentials, requires `is_admin`).
 

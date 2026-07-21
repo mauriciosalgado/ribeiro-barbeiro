@@ -17,32 +17,24 @@ from shop.views import admin_view, auth_view, barber_view, customer_view, profil
 def brand() -> rx.Component:
     """The shop's logo + name in the top bar.
 
-    Like ``body()``, this is gated on ``State.ui_ready``: the logo/name
-    shown here come from ``State``, whose *very first* render is a value
-    frozen into the compiled JS bundle at build time (Reflex's static first
-    paint, served before any WebSocket connects) — not the live warm-process
-    cache, which only affects what the server sends *after* that. So on a
-    cold reload the true shop name would flash for one render regardless of
-    the cache. Showing a blank placeholder instead avoids ever displaying
-    the wrong name, matching the same trade-off used for the login view.
+    Only ever mounted once ``State.ui_ready`` is true (see ``index()``), by
+    which point ``init()`` — which loads the real shop name — has already
+    fully run (on_load handlers execute in order: init() then refresh()).
+    No separate gating needed here.
     """
-    return rx.cond(
-        State.ui_ready,
-        rx.hstack(
-            rx.image(
-                src=State.logo_src,
-                height="2.4rem",
-                width="2.4rem",
-                object_fit="contain",
-                border_radius="10px",
-                background="white",
-                padding="2px",
-            ),
-            rx.heading(State.shop_name, size="5", weight="bold", color=INK),
-            align="center",
-            spacing="3",
+    return rx.hstack(
+        rx.image(
+            src=State.logo_src,
+            height="2.4rem",
+            width="2.4rem",
+            object_fit="contain",
+            border_radius="10px",
+            background="white",
+            padding="2px",
         ),
-        rx.box(height="2.4rem", width="12rem"),
+        rx.heading(State.shop_name, size="5", weight="bold", color=INK),
+        align="center",
+        spacing="3",
     )
 
 
@@ -104,41 +96,22 @@ def hero() -> rx.Component:
     )
 
 
-def loading_view() -> rx.Component:
-    """A blank placeholder shown until we know which view to render.
-
-    ``State.token`` lives in the browser's localStorage, so on every fresh
-    page load it starts out empty (and ``logged_in`` False) until a
-    hydrate round-trip syncs the real value and ``refresh()`` decodes it
-    (see state.py's ``ui_ready``) — this is per-browser private data, so
-    unlike the shop's name/theme it can't be pre-warmed from a shared
-    cache. A plain blank box (no spinner, no skeleton) avoids ever
-    flashing the *wrong* content (sign-in card for someone already logged
-    in, or vice versa) while that's in flight, without drawing attention
-    to the wait itself.
-    """
-    return rx.box(min_height="40vh", width="100%")
-
-
 def body() -> rx.Component:
+    """Only ever mounted once ``State.ui_ready`` is true (see ``index()``)."""
     return rx.cond(
-        State.ui_ready,
-        rx.cond(
-            State.logged_in,
-            rx.vstack(
-                rx.match(
-                    State.role,
-                    ("admin", admin_view()),
-                    ("barber", barber_view()),
-                    customer_view(),
-                ),
-                profile_card(),
-                spacing="5",
-                width="100%",
+        State.logged_in,
+        rx.vstack(
+            rx.match(
+                State.role,
+                ("admin", admin_view()),
+                ("barber", barber_view()),
+                customer_view(),
             ),
-            rx.vstack(hero(), auth_view(), spacing="5", width="100%"),
+            profile_card(),
+            spacing="5",
+            width="100%",
         ),
-        loading_view(),
+        rx.vstack(hero(), auth_view(), spacing="5", width="100%"),
     )
 
 
@@ -162,41 +135,52 @@ def index() -> rx.Component:
     return rx.theme(
         rx.el.style(State.theme_css),
         color_mode_driver(),
-        rx.box(
+        rx.cond(
+            State.ui_ready,
             rx.box(
-                top_bar(),
-                width="100%",
-                display="flex",
-                justify_content="center",
-                background=CARD,
-                backdrop_filter="blur(8px)",
-                box_shadow=SHADOW,
-                position="sticky",
-                top="0",
-                z_index="10",
-            ),
-            rx.box(
-                rx.vstack(
-                    rx.cond(
-                        State.error != "",
-                        rx.callout(
-                            State.error, icon="triangle-alert", color_scheme="red", width="100%"
-                        ),
-                    ),
-                    body(),
-                    spacing="5",
+                rx.box(
+                    top_bar(),
                     width="100%",
-                    max_width="480px",
+                    display="flex",
+                    justify_content="center",
+                    background=CARD,
+                    backdrop_filter="blur(8px)",
+                    box_shadow=SHADOW,
+                    position="sticky",
+                    top="0",
+                    z_index="10",
                 ),
+                rx.box(
+                    rx.vstack(
+                        rx.cond(
+                            State.error != "",
+                            rx.callout(
+                                State.error,
+                                icon="triangle-alert",
+                                color_scheme="red",
+                                width="100%",
+                            ),
+                        ),
+                        body(),
+                        spacing="5",
+                        width="100%",
+                        max_width="480px",
+                    ),
+                    width="100%",
+                    display="flex",
+                    justify_content="center",
+                    padding="1.5rem 1.25rem 3rem",
+                ),
+                class_name="shop-root",
+                min_height="100vh",
                 width="100%",
-                display="flex",
-                justify_content="center",
-                padding="1.5rem 1.25rem 3rem",
+                background=PAPER,
             ),
-            class_name="shop-root",
-            min_height="100vh",
-            width="100%",
-            background=PAPER,
+            # Nothing is known yet (which shell to show, the shop's theme).
+            # A literal white page — no top bar, no shop colours, no
+            # skeleton — is the only way to never show anything wrong for
+            # even a moment; see refresh() and state.py's ui_ready.
+            rx.box(min_height="100vh", width="100%", background="white"),
         ),
         # Radix reads light/dark tokens from the document color mode, which the
         # hidden ``color_mode_driver`` keeps in sync with the chosen background;

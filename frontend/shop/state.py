@@ -765,6 +765,16 @@ class State(rx.State):
                 self.auth_error = "Email ou palavra-passe incorretos."
                 return
             self.token = resp.json()["access_token"]
+        # Decode the fresh token's claims right here, so is_admin/barber_id
+        # land in the *same* delta as token — otherwise this event ends with
+        # only token changed, briefly rendering the customer shell (stale
+        # is_admin/barber_id) before refresh() corrects it on its own,
+        # separate delta a moment later. See state.py's _decode_access_token
+        # and refresh() for the equivalent reload-time optimisation.
+        claims = _decode_access_token(self.token)
+        if claims is not None:
+            self.is_admin = bool(claims.get("is_admin", False))
+            self.barber_id = int(claims.get("barber_id", 0))
         self.form_password = ""
         return State.refresh
 

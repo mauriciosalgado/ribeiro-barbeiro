@@ -48,7 +48,10 @@ Edit the `environment` block in `docker-compose.yml`. Everything is in one place
 
 > **JWT_SECRET** signs every login, verification, and password-reset token. If
 > someone guesses it they can log in as any user. Generate one per shop with
-> `openssl rand -hex 32`.
+> `openssl rand -hex 32`. The frontend needs the exact same value too (see
+> `docker-compose.yml`'s `frontend.environment` block) — it verifies a
+> token's signature locally to show the right view immediately on page
+> load, without waiting on an API round-trip; see "How it works" below.
 
 ### Branding (optional — owner changes live from the UI)
 
@@ -173,7 +176,8 @@ DATABASE_URL: "postgresql://user:pass@host:5432/barber"
 
 ### Go-live checklist
 
-1. `openssl rand -hex 32` → `JWT_SECRET`
+1. `openssl rand -hex 32` → `JWT_SECRET` (same value on **both** the backend
+   and frontend services — the frontend verifies tokens locally with it)
 2. Set `SHOP_NAME`, `OWNER_*`, `SHOP_TIMEZONE`
 3. Point `SMTP_*` at a real mail provider
 4. Set `CORS_ORIGINS` to the frontend's URL
@@ -194,6 +198,14 @@ DATABASE_URL: "postgresql://user:pass@host:5432/barber"
 - **Closures** — owner blocks a period; overlapping bookings are cancelled.
 - **Admin console** — full CRUD over users, barbers, services, hours,
   appointments, closures, and settings at `/admin`.
+- **Instant auth state on page load** — the access token carries the user's
+  role as advisory claims, so the frontend can verify its signature and
+  read them locally (no API call) to know immediately which view to show
+  on reload — the backend still re-verifies everything against the
+  database on every real request; a stale/tampered claim can only affect
+  the frontend's optimistic first paint, never authorization. Until that
+  local check resolves, the page renders blank (no skeleton) rather than
+  guessing — see `frontend/shop/state.py`'s `refresh()`/`ui_ready`.
 
 ## Development without Docker
 

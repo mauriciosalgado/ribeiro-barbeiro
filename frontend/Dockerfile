@@ -18,6 +18,14 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY . .
 
+# Run as an unprivileged user, same as the backend. Reflex compiles its
+# Next.js build into /app/.web at *container start* (see the CMD below,
+# and the "Initializing the web directory" / "Creating Production Build"
+# log lines), not at image-build time, so this user needs write access to
+# /app, not just read.
+RUN useradd --create-home app && chown -R app:app /app
+USER app
+
 EXPOSE 3000
 # Production mode serves the pre-built static frontend instead of running
 # Vite's dev server — the dev server enforces an "allowed hosts" allow-list

@@ -5,5 +5,5 @@ description: >-
   frontend, with an optional built-in Postgres. One install = one shop;
   install it again with a different release name/values for another shop.
 type: application
-version: 0.3.0
+version: 0.3.1
 appVersion: "1.0.0"

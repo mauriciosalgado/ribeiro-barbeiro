@@ -44,6 +44,14 @@ Two things ArgoCD does **not** do for you, which stay outside this chart:
    The chart then skips creating its own Secret and reads from yours. Same
    pattern for the built-in Postgres's password:
 
+   > **Note:** the frontend Deployment also reads `JWT_SECRET` from this
+   > same Secret (whichever one — chart-managed or `existingSecret`) — it
+   > verifies an access token's signature locally to show the right view
+   > immediately on page load, instead of waiting on an API round-trip. It
+   > never gets its own separate secret; there's only ever one `JWT_SECRET`
+   > per shop, shared by both Deployments. See `frontend/README.md`'s "Fast
+   > auth on load" section.
+
    ```sh
    kubectl create secret generic ribeiro-postgres-secret \
      --namespace ribeiro-barbeiro \
