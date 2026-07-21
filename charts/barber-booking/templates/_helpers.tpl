@@ -1,20 +1,11 @@
 {{/*
-Chart/release naming — every resource is prefixed "<release>-<nameOverride>"
-(nameOverride defaults to "barber-booking" in values.yaml, nothing hardcoded
-here), so multiple shops can be installed in the same namespace without
-colliding. Override the whole prefix with fullnameOverride if you want a
-different/shorter resource-name prefix (standard Helm chart convention).
+Chart/release naming — every resource is named "<release-name>" by default,
+so give each shop its own release name. Set nameOverride to use a different
+resource-name prefix instead of the release name (e.g. if you want it
+decoupled from whatever the release happens to be called).
 */}}
-{{- define "barber-booking.name" -}}
-{{- .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
-
 {{- define "barber-booking.fullname" -}}
-{{- if .Values.fullnameOverride -}}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
-{{- else -}}
-{{- printf "%s-%s" .Release.Name (include "barber-booking.name" .) | trunc 63 | trimSuffix "-" -}}
-{{- end -}}
+{{- default .Release.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/* Chart name + version, for the standard helm.sh/chart label. */}}
@@ -38,7 +29,7 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end -}}
 
 {{- define "barber-booking.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "barber-booking.name" . }}
+app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
