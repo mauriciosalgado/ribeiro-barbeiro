@@ -154,15 +154,10 @@ you have a specific reason to (see below).
 
 ## Naming & namespace
 
-Every resource is named after the release name by default (e.g. release
-`ribeiro` -> `ribeiro-backend`, `ribeiro-frontend`, ...) and created in
-whatever namespace the release targets — with ArgoCD, that's just
-`spec.destination.namespace` on the shop's `Application` (see the GitOps
-section above); one release name and one namespace per shop is the whole
-convention. Nothing needs to change here for that.
-
-`nameOverride` replaces the resource-name prefix with something other than
-the release name, if you ever want the two decoupled.
+Resources are named after the release name by default (e.g. release `ribeiro`
+-> `ribeiro-backend`), in whatever namespace the release targets — with
+ArgoCD, that's `spec.destination.namespace` on the `Application`. Set
+`nameOverride` to use a different resource-name prefix.
 
 ## Private registry access
 

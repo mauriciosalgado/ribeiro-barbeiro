@@ -3,13 +3,9 @@
 # (ArgoCD)" section for how a shop's Application is set up.
 
 # --- Naming ------------------------------------------------------------
-# Every resource is named after the release name by default (e.g. release
-# "ribeiro" -> "ribeiro-backend", "ribeiro-frontend", ...), and lands in
-# whatever namespace the Application's spec.destination.namespace says
-# (that's the standard way to pick a shop's namespace with ArgoCD — see the
-# GitOps section in the README — nothing to set here for that).
-nameOverride: "" # set to use a different resource-name prefix than the
-                  # release name, e.g. "ribeiro" regardless of release name
+# Resources are named after the release name by default (e.g. "ribeiro" ->
+# "ribeiro-backend"). Set nameOverride to use a different name instead.
+nameOverride: ""
 
 # --- Shop identity ---------------------------------------------------------
 shop:

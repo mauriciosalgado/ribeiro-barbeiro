@@ -1,9 +1,4 @@
-{{/*
-Chart/release naming — every resource is named "<release-name>" by default,
-so give each shop its own release name. Set nameOverride to use a different
-resource-name prefix instead of the release name (e.g. if you want it
-decoupled from whatever the release happens to be called).
-*/}}
+{{/* Resource name — defaults to the release name; nameOverride replaces it. */}}
 {{- define "barber-booking.fullname" -}}
 {{- default .Release.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -13,12 +8,7 @@ decoupled from whatever the release happens to be called).
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{/*
-Full set of recommended labels for every resource. Selector labels (used in
-Deployment/StatefulSet matchLabels, which are immutable after creation) live
-separately below so this can safely gain more labels over time without
-breaking `helm upgrade` on existing releases.
-*/}}
+{{/* Standard labels — selector labels are separate so they stay immutable. */}}
 {{- define "barber-booking.labels" -}}
 helm.sh/chart: {{ include "barber-booking.chart" . }}
 {{ include "barber-booking.selectorLabels" . }}
