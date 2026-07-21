@@ -63,7 +63,45 @@ Two things ArgoCD does **not** do for you, which stay outside this chart:
    External Secrets Operator, or SOPS instead — same `existingSecret` wiring
    either way, only how the Secret gets into the cluster changes.
 
-Example `Application`, in your GitOps repo:
+Example `Application`, in your GitOps repo. An `Application` takes **either**
+`source` (single) **or** `sources` (multi) — never both — pick whichever
+matches where your values file lives:
+
+**Values file in a separate GitOps repo (the common pattern)** — use
+multi-source `sources`, with `$values` referencing the second source by its
+`ref`:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ribeiro-barbeiro
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/you/barber-booking.git
+      targetRevision: main # or a tag, e.g. v1.0.0
+      path: charts/barber-booking
+      helm:
+        valueFiles:
+          - $values/shops/ribeiro/values.yaml
+    - repoURL: https://github.com/you/gitops.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ribeiro-barbeiro
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+**Values file alongside the chart, same repo** — use single `source` with a
+plain relative `valueFiles` path instead:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -79,14 +117,7 @@ spec:
     path: charts/barber-booking
     helm:
       valueFiles:
-        - $values/shops/ribeiro/values.yaml # values live in your GitOps repo
-  sources: # if values live in a separate repo, use the multi-source form:
-    - repoURL: https://github.com/you/barber-booking.git
-      targetRevision: main
-      path: charts/barber-booking
-    - repoURL: https://github.com/you/gitops.git
-      targetRevision: main
-      ref: values
+        - ../../shops/ribeiro/values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: ribeiro-barbeiro
@@ -97,11 +128,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
 ```
-
-(The two `source`/`sources` blocks above are alternatives — use `source`
-with an inline `valueFiles` path if your values live in the same repo as
-this chart, or the multi-source `sources` form if they live in your
-separate GitOps repo, which is the common pattern.)
 
 One `Application` per shop; each just needs its own values file and its own
 `existingSecret`.
