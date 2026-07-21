@@ -3,6 +3,19 @@
 {{- default .Release.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/* Per-resource names — kind-suffixed so an object's kind is obvious from its name. */}}
+{{- define "barber-booking.backendServiceName" -}}{{ include "barber-booking.fullname" . }}-backend-svc{{- end -}}
+{{- define "barber-booking.frontendServiceName" -}}{{ include "barber-booking.fullname" . }}-frontend-svc{{- end -}}
+{{- define "barber-booking.postgresServiceName" -}}{{ include "barber-booking.fullname" . }}-postgres-svc{{- end -}}
+{{- define "barber-booking.backendConfigMapName" -}}{{ include "barber-booking.fullname" . }}-backend-cm{{- end -}}
+{{- define "barber-booking.frontendConfigMapName" -}}{{ include "barber-booking.fullname" . }}-frontend-cm{{- end -}}
+{{- define "barber-booking.backendDeploymentName" -}}{{ include "barber-booking.fullname" . }}-backend-deploy{{- end -}}
+{{- define "barber-booking.frontendDeploymentName" -}}{{ include "barber-booking.fullname" . }}-frontend-deploy{{- end -}}
+{{- define "barber-booking.postgresStatefulSetName" -}}{{ include "barber-booking.fullname" . }}-postgres-sts{{- end -}}
+{{- define "barber-booking.dataPvcName" -}}{{ include "barber-booking.fullname" . }}-data-pvc{{- end -}}
+{{- define "barber-booking.ingressName" -}}{{ include "barber-booking.fullname" . }}-ingress{{- end -}}
+{{- define "barber-booking.registrySecretName" -}}{{ include "barber-booking.fullname" . }}-registry-secret{{- end -}}
+
 {{/* Chart name + version, for the standard helm.sh/chart label. */}}
 {{- define "barber-booking.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
@@ -39,7 +52,7 @@ living in the ConfigMap with the other variables.
 {{- define "barber-booking.databaseUrl" -}}
 {{- if eq .Values.database.type "postgres" -}}
   {{- if .Values.postgresql.enabled -}}
-postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "barber-booking.fullname" . }}-postgres:5432/{{ .Values.postgresql.database }}
+postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "barber-booking.postgresServiceName" . }}:5432/{{ .Values.postgresql.database }}
   {{- else -}}
 {{ required "database.externalUrl is required when database.type=postgres and postgresql.enabled=false" .Values.database.externalUrl }}
   {{- end -}}
@@ -61,7 +74,7 @@ https://{{ .Values.ingress.host }}
 {{- if .Values.ingress.tls.secretName -}}
 {{ .Values.ingress.tls.secretName }}
 {{- else -}}
-{{ include "barber-booking.fullname" . }}-tls
+{{ include "barber-booking.fullname" . }}-tls-secret
 {{- end -}}
 {{- end -}}
 
@@ -94,12 +107,12 @@ port-forward` instead.
 
 {{/* Name of the Secret holding JWT_SECRET/OWNER_PASSWORD/SMTP_*. */}}
 {{- define "barber-booking.backendSecretName" -}}
-{{- .Values.existingSecret | default (printf "%s-backend" (include "barber-booking.fullname" .)) -}}
+{{- .Values.existingSecret | default (printf "%s-backend-secret" (include "barber-booking.fullname" .)) -}}
 {{- end -}}
 
 {{/* Name of the Secret holding the built-in Postgres's POSTGRES_PASSWORD. */}}
 {{- define "barber-booking.postgresSecretName" -}}
-{{- .Values.postgresql.existingSecret | default (printf "%s-postgres" (include "barber-booking.fullname" .)) -}}
+{{- .Values.postgresql.existingSecret | default (printf "%s-postgres-secret" (include "barber-booking.fullname" .)) -}}
 {{- end -}}
 
 {{/*
@@ -110,7 +123,7 @@ is set (see image-pull-secret.yaml). Renders nothing if neither is configured.
 {{- define "barber-booking.imagePullSecrets" -}}
 {{- $secrets := .Values.imagePullSecrets -}}
 {{- if .Values.imageCredentials.password -}}
-{{- $secrets = append $secrets (dict "name" (printf "%s-registry" (include "barber-booking.fullname" .))) -}}
+{{- $secrets = append $secrets (dict "name" (include "barber-booking.registrySecretName" .)) -}}
 {{- end -}}
 {{- if $secrets -}}
 imagePullSecrets:

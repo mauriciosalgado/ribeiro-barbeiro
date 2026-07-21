@@ -1,12 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "barber-booking.fullname" . }}-backend
-  labels:
-    {{- include "barber-booking.labels" . | nindent 4 }}
-spec:
-  # See values.yaml: keep this at 1 unless you've moved to Postgres AND added
-  # a shared rate-limit store — the chart doesn't wire either of those up.
+  name: {{ include "barber-booking.backendDeploymentName" . }}
   replicas: {{ .Values.backend.replicas }}
   strategy:
     type: Recreate
@@ -32,7 +27,7 @@ spec:
             - containerPort: 8000
           envFrom:
             - configMapRef:
-                name: {{ include "barber-booking.fullname" . }}-backend
+                name: {{ include "barber-booking.backendConfigMapName" . }}
             - secretRef:
                 name: {{ include "barber-booking.backendSecretName" . }}
           env:
@@ -72,5 +67,5 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "barber-booking.fullname" . }}-data
+            claimName: {{ include "barber-booking.dataPvcName" . }}
       {{- end }}

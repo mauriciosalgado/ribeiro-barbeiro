@@ -6,11 +6,11 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "barber-booking.fullname" . }}-postgres
+  name: {{ include "barber-booking.postgresStatefulSetName" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ include "barber-booking.fullname" . }}-postgres
+  serviceName: {{ include "barber-booking.postgresServiceName" . }}
   replicas: 1
   selector:
     matchLabels:

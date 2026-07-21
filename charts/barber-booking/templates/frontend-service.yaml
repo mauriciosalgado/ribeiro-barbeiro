@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "barber-booking.fullname" . }}-frontend
+  name: {{ include "barber-booking.frontendServiceName" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
 spec:

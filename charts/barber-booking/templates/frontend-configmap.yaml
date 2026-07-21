@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "barber-booking.fullname" . }}-frontend
+  name: {{ include "barber-booking.frontendConfigMapName" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
 data:
@@ -9,7 +9,7 @@ data:
   # a public URL. The API itself never needs to be public for the booking
   # site to work at all; ingress.apiHost (which this env var has nothing
   # to do with) is a separate, optional opt-in for exposing it directly.
-  API_URL: {{ printf "http://%s-backend:8000" (include "barber-booking.fullname" .) | quote }}
+  API_URL: {{ printf "http://%s:8000" (include "barber-booking.backendServiceName" .) | quote }}
   # Browser-facing link to the backend's SQLAdmin console. Empty (default)
   # hides the link in the UI. Only gets a value when ingress.apiHost is set
   # — which is precisely what makes the console reachable, since apiHost

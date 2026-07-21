@@ -154,8 +154,10 @@ you have a specific reason to (see below).
 
 ## Naming & namespace
 
-Resources are named after the release name by default (e.g. release `ribeiro`
--> `ribeiro-backend`), in whatever namespace the release targets — with
+Resources are named after the release name by default, kind-suffixed so
+what's what is obvious at a glance (e.g. release `ribeiro` -> service
+`ribeiro-backend-svc`, deployment `ribeiro-backend-deploy`, configmap
+`ribeiro-backend-cm`, ...), in whatever namespace the release targets — with
 ArgoCD, that's `spec.destination.namespace` on the `Application`. Set
 `nameOverride` to use a different resource-name prefix.
 

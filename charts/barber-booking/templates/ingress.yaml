@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "barber-booking.fullname" . }}
+  name: {{ include "barber-booking.ingressName" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
@@ -32,7 +32,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "barber-booking.fullname" . }}-frontend
+                name: {{ include "barber-booking.frontendServiceName" . }}
                 port:
                   name: web
     {{- if .Values.ingress.apiHost }}
@@ -48,7 +48,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "barber-booking.fullname" . }}-backend
+                name: {{ include "barber-booking.backendServiceName" . }}
                 port:
                   number: 8000
     {{- end }}

@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "barber-booking.fullname" . }}-frontend
+  name: {{ include "barber-booking.frontendDeploymentName" . }}
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
 spec:
@@ -26,7 +26,7 @@ spec:
               containerPort: 3000
           envFrom:
             - configMapRef:
-                name: {{ include "barber-booking.fullname" . }}-frontend
+                name: {{ include "barber-booking.frontendConfigMapName" . }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           livenessProbe:
