@@ -94,7 +94,11 @@ ingress:
   annotations: {}
   # cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
-    enabled: true
+    enabled: false # Cloudflare Tunnel terminates TLS at the edge; the tunnel
+                    # talks plain HTTP to this Ingress, so no cert-manager or
+                    # in-cluster certificate is needed. Customers still see
+                    # https:// (Cloudflare's edge cert), which is why the
+                    # default urls below still assume https.
     secretName: "" # defaults to "<release-name>-tls" if empty
 
 # CORS allow-list for the API. Defaults to "https://<ingress.host>" if empty —
