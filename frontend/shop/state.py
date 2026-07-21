@@ -39,6 +39,24 @@ ADMIN_URL = os.environ.get("ADMIN_URL", "")
 # straight to the caught email. Unset in production, where real email is sent.
 MAIL_INBOX_URL = os.environ.get("MAIL_INBOX_URL", "")
 
+# Reflex creates a fresh State per browser tab, so without this, every new
+# tab/refresh starts from the class-level defaults below and visibly flashes
+# them until on_load's API calls resolve. This process-wide, in-memory cache
+# holds the last successfully-fetched public shop data (name, theme, logo
+# version); new State instances seed their fields from it instead of the
+# generic defaults, so only the very first visitor after a cold start sees a
+# flash — everyone else gets last-known-good data immediately, still
+# refreshed in the background by init()/save_theme() exactly as before. This
+# is the standard "stale-while-revalidate" pattern: instant render from cache,
+# always re-verified against the real API afterwards. It's a single dict in
+# this worker's own memory (no Redis) — fine because frontend.replicas is
+# pinned to 1 (see values.yaml), and it resets on pod restart same as today.
+_public_cache: dict[str, str] = {}
+
+
+def _cached(key: str, default: str) -> str:
+    return _public_cache.get(key, default)
+
 
 @dataclasses.dataclass
 class Barber:
@@ -172,7 +190,7 @@ def _by_day(rows: list[dict]):
 
 
 class State(rx.State):
-    shop_name: str = "Barbearia"
+    shop_name: str = rx.field(default_factory=lambda: _cached("shop_name", "Barbearia"))
     error: str = ""
     mail_inbox_url: str = MAIL_INBOX_URL  # dev only; empty in production
     admin_url: str = ADMIN_URL  # browser-facing link to the backend admin console
@@ -251,15 +269,18 @@ class State(rx.State):
     recurring_msg: str = ""
 
     # --- appearance (owner picks two colours; the rest is derived, saved shop-wide) -
-    brand: str = DEFAULT_BRAND  # buttons, links, highlights
-    background: str = DEFAULT_BACKGROUND  # the page (light or dark)
-    headline: str = DEFAULT_HEADLINE  # sign-in page welcome, owner-editable
+    # Seeded from _public_cache (see above) so a warm worker skips the flash
+    # of these generic colours/text on every new tab; still refreshed by
+    # init()/save_theme() same as before.
+    brand: str = rx.field(default_factory=lambda: _cached("brand", DEFAULT_BRAND))
+    background: str = rx.field(default_factory=lambda: _cached("background", DEFAULT_BACKGROUND))
+    headline: str = rx.field(default_factory=lambda: _cached("headline", DEFAULT_HEADLINE))
     theme_msg: str = ""
     brand_presets: list[str] = BRAND_PRESETS
     background_presets: list[str] = BACKGROUND_PRESETS
 
     # --- logo (stored in the backend DB; changeable live, no restart) ----
-    logo_version: str = ""  # cache-buster that changes when the logo changes
+    logo_version: str = rx.field(default_factory=lambda: _cached("logo_version", ""))
     logo_msg: str = ""
     # Pending logo: held in state until the owner clicks "Guardar".
     _pending_logo_b64: str = ""
@@ -420,6 +441,7 @@ class State(rx.State):
         async with httpx.AsyncClient(base_url=API_URL, timeout=5) as client:
             try:
                 self.shop_name = (await client.get("/health")).json()["shop"]
+                _public_cache["shop_name"] = self.shop_name
                 rows = (await client.get("/barbers")).json()
                 self.barbers = [
                     Barber(
@@ -570,6 +592,10 @@ class State(rx.State):
             self.background = theme["background"]
             self.headline = theme["headline"]
             self.logo_version = str(theme["logo_version"])
+            _public_cache["brand"] = self.brand
+            _public_cache["background"] = self.background
+            _public_cache["headline"] = self.headline
+            _public_cache["logo_version"] = self.logo_version
         except (httpx.HTTPError, KeyError):
             pass  # keep the compile-time defaults
 
@@ -598,6 +624,13 @@ class State(rx.State):
             if resp.status_code != 200:
                 self.theme_msg = "Não foi possível guardar."
                 return
+            # Update the shared cache immediately so the next visitor (even
+            # before their own on_load fetch resolves) sees the new theme
+            # right away, instead of the brief old-value flash described in
+            # _load_theme's docstring.
+            _public_cache["brand"] = self.brand
+            _public_cache["background"] = self.background
+            _public_cache["headline"] = self.headline
 
             # Upload logo if one was staged.
             if self._pending_logo_b64:
@@ -608,6 +641,7 @@ class State(rx.State):
                 )
                 if logo_resp.status_code == 200:
                     self.logo_version = str(logo_resp.json()["logo_version"])
+                    _public_cache["logo_version"] = self.logo_version
                     self._pending_logo_b64 = ""
                     self._pending_logo_name = ""
                     self._pending_logo_type = ""
