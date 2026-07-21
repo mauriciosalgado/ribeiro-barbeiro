@@ -352,6 +352,35 @@ Not part of the GitOps flow above — just for trying the chart out by hand on
 `kind`/`minikube`/`k3d`/Docker Desktop. See the commands at the top of
 `values-local.yaml`.
 
+## Reaching the app without an Ingress
+
+Both Services default to `ClusterIP` (only reachable from inside the
+cluster) — normal once Ingress is set up. To reach the app directly instead
+(e.g. testing from your home network before DNS/Ingress is ready), set the
+frontend Service to `LoadBalancer`:
+
+```yaml
+frontend:
+  service:
+    type: LoadBalancer
+```
+
+Your cluster needs a load-balancer implementation for this to get a real
+external IP (cloud providers do this automatically; bare-metal clusters need
+something like MetalLB). Check it with:
+
+```sh
+kubectl get svc -n ribeiro-barbeiro ribeiro-frontend-svc
+```
+
+Once `EXTERNAL-IP` is assigned, the booking site is reachable at
+`http://<that-ip>:3000` — no TLS, no hostname, just for testing. Switch back
+to `ClusterIP` (the default) once Ingress is set up for real use.
+`backend.service.type` works the same way, for testing `/docs`/`/admin`
+directly without the frontend in front — but keep in mind
+[the note above](#first-shop--what-to-configure) about `ingress.apiHost`:
+the same "now it's fully public" tradeoff applies here too.
+
 ## Why backend/frontend replicas stay at 1
 
 - **Backend**: SQLite is a single file (one writer at a time), and the login

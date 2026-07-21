@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "barber-booking.labels" . | nindent 4 }}
 spec:
+  type: {{ .Values.backend.service.type }}
   selector:
     app: {{ include "barber-booking.fullname" . }}-backend
   ports:

@@ -182,6 +182,11 @@ backend:
     limits:
       cpu: 500m
       memory: 256Mi
+  service:
+    # Cluster-internal by design (see ingress.apiHost's comment above) —
+    # only change this for direct testing, e.g. reaching /docs or /admin
+    # without the frontend/Ingress in front.
+    type: ClusterIP
 
 # --- Frontend (Reflex) ---------------------------------------------------
 # Keep replicas at 1: Reflex keeps UI state in memory per worker; running
@@ -202,3 +207,9 @@ frontend:
   # Dev-only convenience link to a caught-email inbox (e.g. Mailpit). Leave
   # empty in production.
   mailInboxUrl: ""
+  service:
+    # ClusterIP (default) is right behind an Ingress. Set to LoadBalancer to
+    # get an external IP directly from the Service — e.g. to reach the app
+    # from outside the cluster without setting up Ingress/DNS/TLS first,
+    # or NodePort if your cluster/network doesn't support LoadBalancer.
+    type: ClusterIP
