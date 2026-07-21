@@ -115,7 +115,7 @@ ingress:
 # Cloudflare Tunnel (not the in-chart Ingress) terminates TLS and routes
 # ribeirobarbeiro.com to this Service, so ingress.enabled stays false here
 # but the real public origin is still https://ribeirobarbeiro.com.
-corsOrigins: "https://ribeirobarbeiro.com"
+corsOrigins: "*" # TODO: narrow back to "https://ribeirobarbeiro.com" once testing settles
 
 # Advanced: override the public URLs directly instead of deriving them from
 # ingress.host/apiHost (which assumes HTTPS behind a real Ingress). Required
