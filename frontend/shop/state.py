@@ -1256,11 +1256,15 @@ class State(rx.State):
 
     @rx.event
     async def cancel_series(self, group_id: str):
-        """Cancel every upcoming booking in a weekly series."""
+        """Cancel every upcoming booking in a weekly series (customer-facing).
+
+        Only reloads the customer's own list — reloading the barber agenda
+        here would 403 for a plain customer (selected_barber may hold some
+        other barber browsed earlier on the public page) and crash the UI.
+        """
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             await client.delete(f"/appointments/series/{group_id}")
             await self._load_my_appointments(client)
-            await self._load_schedule(client, self.selected_barber)
             await self._fetch_slots(client)
 
     @rx.event
