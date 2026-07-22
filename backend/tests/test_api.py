@@ -1,12 +1,12 @@
 """Integration tests for the booking API."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.database import engine
-from app.models import Barber
+from app.models import Appointment, Barber
 from tests.conftest import register
 
 SLOT_9 = "T09:00:00"
@@ -27,6 +27,7 @@ def book(
     start_at: str,
     service_id: int = HAIRCUT,
     repeat_weeks: int = 1,
+    perpetual: bool = False,
 ):
     return client.post(
         "/appointments",
@@ -35,6 +36,7 @@ def book(
             "start_at": start_at,
             "service_id": service_id,
             "repeat_weeks": repeat_weeks,
+            "perpetual": perpetual,
         },
         headers=headers,
     )
@@ -506,18 +508,28 @@ def test_barber_books_a_walk_in_by_name(
     booked = client.get("/barbers/1/appointments", headers=owner_headers).json()
     assert booked[0]["customer_name"] == "Old Tom"
     assert booked[0]["customer_email"] == ""
+    assert booked[0]["customer_phone"] == ""
 
 
 def test_barber_books_an_existing_account_by_email(
     client: TestClient, owner_headers: dict, barber: dict
 ):
-    register(client, "eve@test.com")
+    eve_headers = register(client, "eve@test.com")
+    client.patch(
+        "/auth/me",
+        json={"full_name": "Eve", "phone": "913000000"},
+        headers=eve_headers,
+    )
     resp = book_manual(
         client, owner_headers, slot(barber["open_day"]), customer_email="eve@test.com"
     )
     assert resp.status_code == 201
     assert first(resp)["customer_id"] is not None
     assert first(resp)["guest_name"] is None
+
+    booked = client.get("/barbers/1/appointments", headers=owner_headers).json()
+    assert booked[0]["customer_email"] == "eve@test.com"
+    assert booked[0]["customer_phone"] == "913000000"
 
     eve = register(client, "eve@test.com")  # same account; log back in
     assert len(client.get("/appointments", headers=eve).json()) == 1
@@ -857,3 +869,372 @@ def test_cancel_series_removes_all(
         == 204
     )
     assert client.get("/appointments", headers=headers).json() == []
+
+
+# --- perpetual recurrence -------------------------------------------------
+
+
+def test_perpetual_booking_creates_a_series_and_materialises_the_anchor(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    resp = book(client, headers, 1, slot(barber["open_day"]), perpetual=True)
+    assert resp.status_code == 201
+    booked = resp.json()["booked"]
+    assert len(booked) >= 1
+    group = booked[0]["recurrence_group_id"]
+    assert group is not None
+    assert all(b["recurrence_group_id"] == group for b in booked)
+
+
+def test_perpetual_booking_is_refused_when_not_allowed(
+    client: TestClient, barber: dict
+):
+    headers = register(client, "joe@test.com")
+    resp = book(client, headers, 1, slot(barber["open_day"]), perpetual=True)
+    assert resp.status_code == 403
+
+
+def test_perpetual_booking_refuses_a_taken_slot(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    book_manual(client, owner_headers, slot(barber["open_day"]), customer_name="Tom")
+
+    headers = register(client, "joe@test.com")
+    resp = book(client, headers, 1, slot(barber["open_day"]), perpetual=True)
+    assert resp.status_code == 409
+
+
+def test_perpetual_series_appears_in_recurring_series_list(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"]), perpetual=True)
+
+    mine = client.get("/appointments/recurring-series", headers=headers).json()
+    assert len(mine) == 1
+    assert mine[0]["barber_name"]
+    assert mine[0]["service_name"] == "Corte"
+
+    # The barber/owner sees it too, since it's their chair.
+    theirs = client.get("/appointments/recurring-series", headers=owner_headers).json()
+    assert len(theirs) == 1
+    assert theirs[0]["id"] == mine[0]["id"]
+
+
+def test_a_customer_only_sees_their_own_recurring_series(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    joe = register(client, "joe@test.com")
+    book(client, joe, 1, slot(barber["open_day"]), perpetual=True)
+
+    ana = register(client, "ana@test.com")
+    assert client.get("/appointments/recurring-series", headers=ana).json() == []
+
+
+def test_cancelling_a_perpetual_series_removes_the_pattern_and_bookings(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    booked = book(client, headers, 1, slot(barber["open_day"]), perpetual=True).json()[
+        "booked"
+    ]
+    group = booked[0]["recurrence_group_id"]
+
+    assert (
+        client.delete(f"/appointments/series/{group}", headers=headers).status_code
+        == 204
+    )
+    assert client.get("/appointments", headers=headers).json() == []
+    assert client.get("/appointments/recurring-series", headers=headers).json() == []
+
+    # Reading the schedule again must not resurrect the cancelled series.
+    client.get("/barbers/1/appointments", headers=owner_headers)
+    assert client.get("/appointments", headers=headers).json() == []
+
+
+def test_bounded_series_appears_in_recurring_series_list(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"]), repeat_weeks=3)
+
+    mine = client.get("/appointments/recurring-series", headers=headers).json()
+    assert len(mine) == 1
+    entry = mine[0]
+    assert entry["kind"] == "bounded"
+    assert entry["ends_at"] == str(barber["open_day"] + timedelta(weeks=2))
+
+
+def test_recurring_series_exposes_customer_contact_details_for_staff(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    """The barber/admin's "Horários Fixos" needs a way to reach the customer;
+    the customer's own copy of the same list doesn't need to show it back to
+    them, but the API always includes it — the frontend decides what to
+    render per role, since a customer only ever sees their own series here
+    anyway (nothing about another customer ever leaks through this list)."""
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"]), perpetual=True)
+
+    staff_view = client.get(
+        "/appointments/recurring-series", headers=owner_headers
+    ).json()
+    assert len(staff_view) == 1
+    assert staff_view[0]["customer_email"] == "joe@test.com"
+
+    # A walk-in with no account has neither — same as elsewhere in the app.
+    book_manual(
+        client, owner_headers, slot(barber["closed_day"]), customer_name="Tom"
+    )
+    resp = book_manual(
+        client,
+        owner_headers,
+        slot(barber["open_day"] + timedelta(weeks=6)),
+        service_id=BEARD,
+        customer_name="Walk-in Tom",
+        perpetual=True,
+    )
+    assert resp.status_code == 201
+    staff_view = client.get(
+        "/appointments/recurring-series", headers=owner_headers
+    ).json()
+    walk_in_entry = next(e for e in staff_view if e["customer_name"] == "Walk-in Tom")
+    assert walk_in_entry["customer_email"] == ""
+    assert walk_in_entry["customer_phone"] == ""
+
+
+def test_a_single_booking_is_not_a_recurring_series(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"]))
+    assert client.get("/appointments/recurring-series", headers=headers).json() == []
+
+
+def test_recurring_series_list_mixes_bounded_and_perpetual(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), repeat_weeks=3)
+    book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"], "T10:00:00"),
+        service_id=BEARD,
+        perpetual=True,
+    )
+
+    mine = client.get("/appointments/recurring-series", headers=headers).json()
+    assert len(mine) == 2
+    kinds = {entry["kind"] for entry in mine}
+    assert kinds == {"bounded", "perpetual"}
+    perpetual_entry = next(e for e in mine if e["kind"] == "perpetual")
+    assert perpetual_entry["ends_at"] is None
+    bounded_entry = next(e for e in mine if e["kind"] == "bounded")
+    assert bounded_entry["ends_at"] is not None
+
+
+def test_cannot_book_a_second_bounded_series_at_the_same_weekday_and_time(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), repeat_weeks=2)
+
+    # Same weekday+hour every week, just a different (later) starting date
+    # and a different service — still landing on the same standing slot.
+    resp = book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"] + timedelta(weeks=4), "T09:00:00"),
+        service_id=BEARD,
+        repeat_weeks=2,
+    )
+    assert resp.status_code == 409
+    # The frontend distinguishes this from a plain slot clash by this code,
+    # not by matching on the human-readable message text.
+    assert resp.json()["detail"]["code"] == "standing_slot_conflict"
+
+
+def test_cannot_book_perpetual_over_an_existing_bounded_series(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), repeat_weeks=3)
+
+    resp = book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"] + timedelta(weeks=6), "T09:00:00"),
+        perpetual=True,
+    )
+    assert resp.status_code == 409
+
+
+def test_cannot_book_bounded_over_an_existing_perpetual_series(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), perpetual=True)
+
+    resp = book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"] + timedelta(weeks=6), "T09:00:00"),
+        repeat_weeks=2,
+    )
+    assert resp.status_code == 409
+
+
+def test_different_time_recurring_series_is_still_allowed(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), repeat_weeks=2)
+
+    resp = book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"], "T10:00:00"),
+        service_id=BEARD,
+        repeat_weeks=2,
+    )
+    assert resp.status_code == 201
+
+
+def test_a_single_booking_never_triggers_the_standing_slot_check(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    book(client, headers, 1, slot(barber["open_day"], "T09:00:00"), repeat_weeks=3)
+
+    # A plain, one-off booking at the same weekday+time isn't a new standing
+    # slot (repeat_weeks defaults to 1), so it isn't blocked by this guard —
+    # it's still refused normally, though, since that exact slot is taken.
+    resp = book(
+        client,
+        headers,
+        1,
+        slot(barber["open_day"] + timedelta(weeks=1), "T09:00:00"),
+    )
+    assert resp.status_code == 409  # taken by the series itself, not the guard
+
+
+def test_walk_ins_are_exempt_from_the_standing_slot_check(
+    client: TestClient, owner_headers: dict, barber: dict
+):
+    """Guests aren't tracked well enough for the guard to apply reliably."""
+    book_manual(
+        client,
+        owner_headers,
+        slot(barber["open_day"], "T09:00:00"),
+        customer_name="Tom",
+        repeat_weeks=2,
+    )
+    resp = book_manual(
+        client,
+        owner_headers,
+        slot(barber["open_day"] + timedelta(weeks=4), "T09:00:00"),
+        service_id=BEARD,
+        customer_name="Tom",
+        repeat_weeks=2,
+    )
+    assert resp.status_code == 201
+
+
+def _freeze_shop_now(monkeypatch, when):
+    """Pin "now" everywhere the app reads it.
+
+    Every module that needs the current time does ``from app.availability
+    import shop_now``, which copies the function *reference* at import time —
+    patching ``app.availability.shop_now`` alone would not affect those
+    already-bound copies. So each module that materialises or filters
+    appointments by date is patched individually here.
+    """
+    import app.availability as availability
+    import app.recurrence as recurrence
+    import app.routers.appointments as appointments
+    import app.routers.barbers as barbers
+
+    for module in (availability, recurrence, appointments, barbers):
+        monkeypatch.setattr(module, "shop_now", lambda when=when: when)
+
+
+def test_perpetual_series_rolling_window_slides_forward_week_by_week(
+    client: TestClient, owner_headers: dict, barber: dict, monkeypatch
+):
+    """The mechanism behind "Horários Fixos": a perpetual series only ever
+    materialises real Appointment rows a rolling window ahead, refreshed
+    lazily on every read — there is no background job.
+
+    This walks through exactly the scenario a barber/customer experiences:
+    book a perpetual Monday slot, see the next few Mondays appear, then let
+    the anchor Monday come and go and confirm that, the very next time
+    anyone reads the schedule (the following day — no need to wait for the
+    week to turn over), the one that's now in the past drops off the
+    "upcoming" list while enough new far-future Mondays have already been
+    materialised to keep 4 full weeks of standing appointments visible.
+    """
+    _allow_recurring(client, owner_headers)
+    headers = register(client, "joe@test.com")
+    anchor = barber["open_day"]  # the only weekday this barber works
+
+    resp = book(client, headers, 1, slot(anchor), perpetual=True)
+    assert resp.status_code == 201
+
+    # Right after booking, "now" is today, so the window (today + 4 weeks)
+    # only reaches 2 weeks past the anchor (itself already 2 weeks out) —
+    # 3 Mondays visible: the anchor, +1wk and +2wk.
+    upcoming = client.get("/appointments", headers=headers).json()
+    dates = {a["start_at"] for a in upcoming}
+    assert dates == {
+        slot(anchor),
+        slot(anchor + timedelta(weeks=1)),
+        slot(anchor + timedelta(weeks=2)),
+    }
+
+    # The anchor Monday happens; the very next day (Tuesday) someone opens
+    # the schedule again — no week needs to "turn over" for this to kick in.
+    the_next_day = datetime.combine(anchor + timedelta(days=1), datetime.min.time())
+    _freeze_shop_now(monkeypatch, the_next_day)
+
+    upcoming = client.get("/appointments", headers=headers).json()
+    dates = {a["start_at"] for a in upcoming}
+
+    # The anchor Monday is in the past now — filtered out of "upcoming",
+    # even though its Appointment row still exists (kept for history, see
+    # below). The window immediately tops back up to a full 4 Mondays —
+    # not just the next one, but as many as it takes to reach the 4-week
+    # mark from "now" — all on this single lazy read, nothing scheduled.
+    assert dates == {
+        slot(anchor + timedelta(weeks=1)),
+        slot(anchor + timedelta(weeks=2)),
+        slot(anchor + timedelta(weeks=3)),
+        slot(anchor + timedelta(weeks=4)),
+    }
+
+    with Session(engine) as session:
+        past_appt = session.exec(
+            select(Appointment).where(
+                Appointment.start_at == datetime.fromisoformat(slot(anchor))
+            )
+        ).first()
+        assert past_appt is not None  # never deleted — just no longer "upcoming"

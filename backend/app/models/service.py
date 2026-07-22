@@ -1,11 +1,17 @@
 """Services — the kinds of appointment a barber offers (e.g. haircut, beard)."""
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
+
+from app.models.barber import Barber
 
 
 class Service(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     barber_id: int = Field(foreign_key="barber.id", ondelete="CASCADE")
+    # Lets SQLAdmin render a barber picker on the create/edit form — a bare
+    # FK column has no related model to build a dropdown from. Mirrors the
+    # same Relationship already on WorkingHours and Appointment.
+    barber: Barber | None = Relationship()
     name: str
     duration_minutes: int = Field(default=30, gt=0, le=240)
     is_active: bool = True

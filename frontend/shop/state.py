@@ -1,5 +1,6 @@
 """All page state: authentication, the user's role, booking, and appointments."""
 
+import asyncio
 import base64
 import dataclasses
 import os
@@ -53,6 +54,21 @@ def _decode_access_token(token: str) -> dict | None:
     return claims
 
 
+# Matches the backend's app.routers.appointments.STANDING_SLOT_CONFLICT — a
+# machine-readable error code, not a message string, so this check can't be
+# broken by future wording changes on either side.
+STANDING_SLOT_CONFLICT = "standing_slot_conflict"
+
+
+def _error_code(resp: httpx.Response) -> str | None:
+    """The structured error code from a JSON error body, if any (e.g. {"detail": {"code": ...}})."""
+    try:
+        detail = resp.json().get("detail")
+    except ValueError:
+        return None
+    return detail.get("code") if isinstance(detail, dict) else None
+
+
 # Browser-facing URL of the admin console (the backend serves it at /admin).
 # Empty by default — the admin console is optional to expose publicly at
 # all; when empty, the UI hides the link instead of showing a dead one.
@@ -61,6 +77,23 @@ ADMIN_URL = os.environ.get("ADMIN_URL", "")
 # In dev, the compose file points this at Mailpit so the verify banner can link
 # straight to the caught email. Unset in production, where real email is sent.
 MAIL_INBOX_URL = os.environ.get("MAIL_INBOX_URL", "")
+
+# Flash-message fields that show a temporary callout somewhere in the UI.
+# refresh() clears them all on every page load/reconnect as a safety net, and
+# clear_message_after() auto-dismisses each one a few seconds after it's set,
+# so a message never gets stuck on screen (e.g. after a crashed request).
+FLASH_FIELDS = (
+    "booking_msg",
+    "manual_msg",
+    "hours_msg",
+    "service_msg",
+    "recurring_msg",
+    "logo_msg",
+    "theme_msg",
+    "profile_msg",
+    "pw_msg",
+)
+
 
 # Reflex creates a fresh State per browser tab, so without this, every new
 # tab/refresh starts from the class-level defaults below and visibly flashes
@@ -124,6 +157,7 @@ class ScheduledAppt:
     time: str  # "09:00"
     customer_name: str
     customer_email: str
+    customer_phone: str = ""
     service_id: int = 0
     service_name: str = ""
     duration: int = 30
@@ -141,6 +175,22 @@ class ScheduleGroup:
     iso: str  # "2026-07-20" — the day this group belongs to
     label: str
     appts: list[ScheduledAppt]
+
+
+@dataclasses.dataclass
+class RecurringSeriesEntry:
+    """One "Horário Fixo" — a standing weekly booking, perpetual or bounded."""
+
+    id: str  # the recurrence_group_id; also what /appointments/series/{id} cancels
+    kind: str  # "perpetual" | "bounded"
+    weekday_label: str  # "Segunda"
+    time_label: str  # "10:00"
+    limit_label: str  # "Sem data limite" or "Até 12/09/2026"
+    service_name: str
+    barber_name: str
+    customer_name: str
+    customer_email: str = ""  # "" for a walk-in with no account
+    customer_phone: str = ""  # "" for a walk-in, or an account with none on file
 
 
 @dataclasses.dataclass
@@ -266,8 +316,10 @@ class State(rx.State):
     selected_date: str = ""
     selected_slot: str = ""
     repeat_weeks: str = "1"  # customer's weekly-repeat choice (only if the chair allows it)
+    perpetual: bool = False  # "repeat every week, forever" — mutually exclusive with repeat_weeks
     loading_slots: bool = False
     booking_msg: str = ""
+    booking_msg_color: str = "blue"  # "tomato" for cancellations, "blue" otherwise
     needs_verify: bool = False
 
     # --- booking on someone's behalf (barber / admin) --------------------
@@ -279,6 +331,7 @@ class State(rx.State):
     # --- appointments ----------------------------------------------------
     my_appointments: list[ApptGroup] = []
     schedule: list[ScheduleGroup] = []
+    recurring_series: list[RecurringSeriesEntry] = []  # every "Horário Fixo", any role
     admin_barber: int = 0
     selected_day: str = ""  # iso day chosen in the agenda's booked-day strip
 
@@ -504,6 +557,9 @@ class State(rx.State):
             self.ui_ready = True
             return
 
+        for field in FLASH_FIELDS:  # never let a stuck popup survive a reload
+            setattr(self, field, "")
+
         claims = _decode_access_token(self.token)
         if claims is None:  # locally-verifiable as bad: expired, tampered, wrong secret
             self.logout()
@@ -535,13 +591,31 @@ class State(rx.State):
                 await self._load_schedule(client, self.admin_barber)
                 await self._load_hours(client, self.admin_barber)
                 await self._load_services(client, self.admin_barber)
+                await self._load_recurring_series(client)
             elif self.barber_id:
                 self.selected_barber = self.barber_id
                 await self._load_schedule(client, self.barber_id)
                 await self._load_hours(client, self.barber_id)
                 await self._load_services(client, self.barber_id)
+                await self._load_recurring_series(client)
             else:
                 await self._load_my_appointments(client)
+                await self._load_recurring_series(client)
+
+    @rx.event(background=True)
+    async def clear_message_after(self, attr: str, value: str, seconds: float = 4.0):
+        """Auto-dismiss a flash message a few seconds after it's shown.
+
+        Only clears if ``attr`` still holds the exact ``value`` we scheduled
+        this for — if a newer message replaced it in the meantime, that one
+        is left alone (it has its own clear_message_after in flight).
+        """
+        if not value:
+            return
+        await asyncio.sleep(seconds)
+        async with self:
+            if getattr(self, attr) == value:
+                setattr(self, attr, "")
 
     async def _load_my_appointments(self, client: httpx.AsyncClient):
         rows = (await client.get("/appointments")).json()
@@ -562,6 +636,32 @@ class State(rx.State):
             for _iso, label, day_rows in _by_day(rows)
         ]
 
+    async def _load_recurring_series(self, client: httpx.AsyncClient):
+        """Every "Horário Fixo" (standing weekly booking) visible to this user."""
+        rows = (await client.get("/appointments/recurring-series")).json()
+        self.recurring_series = [
+            RecurringSeriesEntry(
+                id=r["id"],
+                kind=r["kind"],
+                weekday_label=_WEEKDAYS[
+                    date.fromisoformat(r["anchor_start_at"][:10]).weekday()
+                ][1],
+                time_label=r["anchor_start_at"][11:16],
+                limit_label=(
+                    "Sem data limite"
+                    if r["kind"] == "perpetual"
+                    else f"Até {date.fromisoformat(r['ends_at']).strftime('%d/%m/%Y')}"
+                ),
+                service_name=r.get("service_name") or "",
+                barber_name=r.get("barber_name") or "",
+                customer_name=r.get("customer_name") or "",
+                customer_email=r.get("customer_email") or "",
+                customer_phone=r.get("customer_phone") or "",
+            )
+            for r in rows
+        ]
+
+
     async def _load_services(self, client: httpx.AsyncClient, barber_id: int):
         """Load a chair's active services and keep the customer's pick valid."""
         if not barber_id:
@@ -577,6 +677,7 @@ class State(rx.State):
         if self.selected_service not in ids:
             self.selected_service = self.services[0].id if self.services else 0
         self.repeat_weeks = "1"
+        self.perpetual = False
 
     async def _load_services_editor(self, client: httpx.AsyncClient, barber_id: int):
         """Load every service (active or not) into the barber's services editor."""
@@ -609,6 +710,7 @@ class State(rx.State):
                         time=r["start_at"][11:16],
                         customer_name=r["customer_name"],
                         customer_email=r["customer_email"],
+                        customer_phone=r.get("customer_phone") or "",
                         service_id=r.get("service_id") or 0,
                         service_name=r.get("service_name") or "",
                         duration=r.get("duration_minutes") or 30,
@@ -672,6 +774,7 @@ class State(rx.State):
             )
             if resp.status_code != 200:
                 self.theme_msg = "Não foi possível guardar."
+                yield State.clear_message_after("theme_msg", self.theme_msg)
                 return
             # Update the shared cache immediately so the next visitor (even
             # before their own on_load fetch resolves) sees the new theme
@@ -697,9 +800,11 @@ class State(rx.State):
                     self.logo_msg = ""
                 else:
                     self.theme_msg = "Cores guardadas, mas o logótipo falhou."
+                    yield State.clear_message_after("theme_msg", self.theme_msg)
                     return
 
             self.theme_msg = "Alterações guardadas."
+        yield State.clear_message_after("theme_msg", self.theme_msg)
 
     @rx.event
     async def upload_logo(self, files: list[rx.UploadFile]):
@@ -713,6 +818,7 @@ class State(rx.State):
         self._pending_logo_name = upload.filename or "logo"
         self._pending_logo_type = getattr(upload, "content_type", None) or "image/png"
         self.logo_msg = "Imagem selecionada — guarde para aplicar."
+        yield State.clear_message_after("logo_msg", self.logo_msg)
 
     async def _load_hours(self, client: httpx.AsyncClient, barber_id: int):
         """Load a chair's weekly hours into the 7-day editor (all days present)."""
@@ -807,6 +913,7 @@ class State(rx.State):
         self.barber_id = 0
         self.my_appointments = []
         self.schedule = []
+        self.recurring_series = []
         self.selected_day = ""
         self.hours = []
         self.hours_msg = ""
@@ -819,6 +926,7 @@ class State(rx.State):
         self.selected_date = ""
         self.selected_slot = ""
         self.slots = []
+        self.perpetual = False
         self.profile_name = ""
         self.profile_phone = ""
         self.profile_msg = ""
@@ -901,6 +1009,7 @@ class State(rx.State):
         self.pw_msg = ""
         if len(self.pw_new) < 8:
             self.pw_msg = "A nova palavra-passe deve ter pelo menos 8 caracteres."
+            yield State.clear_message_after("pw_msg", self.pw_msg)
             return
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             resp = await client.put(
@@ -915,6 +1024,7 @@ class State(rx.State):
             self.pw_msg = "Palavra-passe atual incorreta."
         else:
             self.pw_msg = "Não foi possível alterar. Tente novamente."
+        yield State.clear_message_after("pw_msg", self.pw_msg)
 
     @rx.event
     def set_form_name(self, value: str):
@@ -959,6 +1069,7 @@ class State(rx.State):
         self.profile_msg = ""
         if self.profile_name.strip() == "":
             self.profile_msg = "O nome não pode ficar em branco."
+            yield State.clear_message_after("profile_msg", self.profile_msg)
             return
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             resp = await client.patch(
@@ -973,6 +1084,7 @@ class State(rx.State):
                 self.profile_msg = "Dados atualizados."
             else:
                 self.profile_msg = "Não foi possível guardar. Tente novamente."
+        yield State.clear_message_after("profile_msg", self.profile_msg)
 
     # --- booking events --------------------------------------------------
     @rx.event
@@ -997,6 +1109,10 @@ class State(rx.State):
     @rx.event
     def set_repeat_weeks(self, value: str):
         self.repeat_weeks = value
+
+    @rx.event
+    def set_perpetual(self, value: bool):
+        self.perpetual = value
 
     @rx.event
     async def select_date(self, iso: str):
@@ -1028,6 +1144,7 @@ class State(rx.State):
     @rx.event
     async def book(self):
         self.booking_msg = ""
+        self.booking_msg_color = "blue"
         self.needs_verify = False
         if not self.selected_slot or not self.selected_service:
             return
@@ -1039,6 +1156,7 @@ class State(rx.State):
                     "service_id": self.selected_service,
                     "start_at": self.selected_slot,
                     "repeat_weeks": int(self.repeat_weeks),
+                    "perpetual": self.perpetual,
                 },
             )
             if resp.status_code == 201:
@@ -1048,24 +1166,36 @@ class State(rx.State):
                     if not skipped
                     else f"Marcado! {skipped} semana(s) já estavam ocupadas e foram ignoradas."
                 )
+                self.perpetual = False
                 await self._fetch_slots(client)
                 await self._load_my_appointments(client)
+                await self._load_recurring_series(client)
             elif resp.status_code == 403:
                 self.needs_verify = True
+            elif resp.status_code == 409 and _error_code(resp) == STANDING_SLOT_CONFLICT:
+                self.booking_msg = "Já tem um horário fixo nesse dia da semana e hora."
             elif resp.status_code == 409:
                 self.booking_msg = "Esse horário acabou de ser ocupado — escolha outro."
                 await self._fetch_slots(client)
             else:
                 self.booking_msg = "Não foi possível marcar. Tente novamente."
+        yield State.clear_message_after("booking_msg", self.booking_msg)
 
     @rx.event
     async def cancel_appointment(self, appt_id: int):
+        """Cancel a single booking (customer-facing)."""
+        self.booking_msg_color = "tomato"
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             resp = await client.delete(f"/appointments/{appt_id}")
             if resp.status_code == 403:
                 self.booking_msg = "Demasiado tarde para cancelar online — ligue para a barbearia."
+            elif resp.status_code == 204:
+                self.booking_msg = "Marcação cancelada."
+            else:
+                self.booking_msg = "Não foi possível cancelar. Tente novamente."
             await self._load_my_appointments(client)
             await self._fetch_slots(client)
+        yield State.clear_message_after("booking_msg", self.booking_msg)
 
     @rx.event
     async def resend_verification(self):
@@ -1122,10 +1252,12 @@ class State(rx.State):
                 continue
             if r.start >= r.end:
                 self.hours_msg = f"{r.label}: o início tem de ser antes do fim."
+                yield State.clear_message_after("hours_msg", self.hours_msg)
                 return
             item = {"weekday": r.weekday, "start_time": r.start, "end_time": r.end}
             if bool(r.break_start) != bool(r.break_end):
                 self.hours_msg = f"{r.label}: indique o início e o fim da pausa."
+                yield State.clear_message_after("hours_msg", self.hours_msg)
                 return
             if r.break_start and r.break_end:
                 item["break_start"] = r.break_start
@@ -1143,6 +1275,7 @@ class State(rx.State):
                 self.hours_msg = "A pausa tem de ficar dentro do horário de trabalho."
             else:
                 self.hours_msg = "Não foi possível guardar. Tente novamente."
+        yield State.clear_message_after("hours_msg", self.hours_msg)
 
     # --- services editor (barber configures the chair's service menu) -----
     # Changes are kept local until the user clicks "Guardar", then saved in bulk.
@@ -1159,6 +1292,7 @@ class State(rx.State):
         name = self.new_service_name.strip()
         if not name:
             self.service_msg = "Indique o nome do serviço."
+            yield State.clear_message_after("service_msg", self.service_msg)
             return
         self.edit_services.append(
             Service(id=self._next_local_id, name=name, duration_minutes=int(self.new_service_minutes))
@@ -1214,6 +1348,7 @@ class State(rx.State):
                 await self._load_services(client, self.selected_barber)
             else:
                 self.service_msg = "Não foi possível guardar os serviços."
+        yield State.clear_message_after("service_msg", self.service_msg)
 
     # --- recurrence policy (owner lets customers repeat weekly) -----------
     @rx.event
@@ -1221,6 +1356,7 @@ class State(rx.State):
         self.recurring_msg = ""
         self.allow_recurring = value
         await self._patch_barber({"allow_recurring": value}, "allow_recurring", value)
+        yield State.clear_message_after("recurring_msg", self.recurring_msg)
 
     @rx.event
     async def set_max_recurring_weeks(self, value: str):
@@ -1229,6 +1365,7 @@ class State(rx.State):
         await self._patch_barber(
             {"max_recurring_weeks": int(value)}, "max_recurring_weeks", int(value)
         )
+        yield State.clear_message_after("recurring_msg", self.recurring_msg)
 
     async def _patch_barber(self, body: dict, field: str, cached):
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
@@ -1245,6 +1382,7 @@ class State(rx.State):
     @rx.event
     async def switch_service(self, appt_id: int, value: str):
         """Change an existing booking's service, freeing or using agenda time."""
+        self.hours_msg = ""
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             resp = await client.patch(
                 f"/appointments/{appt_id}", json={"service_id": int(value)}
@@ -1253,6 +1391,7 @@ class State(rx.State):
                 self.hours_msg = "O novo serviço não cabe nesse horário — liberte espaço primeiro."
             await self._load_schedule(client, self.selected_barber)
             await self._fetch_slots(client)
+        yield State.clear_message_after("hours_msg", self.hours_msg)
 
     @rx.event
     async def cancel_series(self, group_id: str):
@@ -1262,10 +1401,41 @@ class State(rx.State):
         here would 403 for a plain customer (selected_barber may hold some
         other barber browsed earlier on the public page) and crash the UI.
         """
+        self.booking_msg_color = "tomato"
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
-            await client.delete(f"/appointments/series/{group_id}")
+            resp = await client.delete(f"/appointments/series/{group_id}")
+            self.booking_msg = (
+                "Série cancelada." if resp.status_code == 204 else "Não foi possível cancelar a série."
+            )
             await self._load_my_appointments(client)
+            await self._load_recurring_series(client)
             await self._fetch_slots(client)
+        yield State.clear_message_after("booking_msg", self.booking_msg)
+
+    @rx.event
+    async def cancel_recurring_series(self, series_id: str):
+        """End a "Horário Fixo" for good — used by the standing-bookings card.
+
+        Unlike cancel_series (customer-only), this card is shown to every
+        role, so it must reload whichever list actually belongs to the
+        current viewer: the barber/admin agenda for staff, or the
+        customer's own appointment list otherwise.
+        """
+        self.booking_msg_color = "tomato"
+        async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
+            resp = await client.delete(f"/appointments/series/{series_id}")
+            self.booking_msg = (
+                "Horário fixo cancelado."
+                if resp.status_code == 204
+                else "Não foi possível cancelar."
+            )
+            if self.is_admin or self.barber_id:
+                await self._load_schedule(client, self.selected_barber)
+            else:
+                await self._load_my_appointments(client)
+            await self._load_recurring_series(client)
+            await self._fetch_slots(client)
+        yield State.clear_message_after("booking_msg", self.booking_msg)
 
     @rx.event
     async def book_manual(self):
@@ -1273,6 +1443,7 @@ class State(rx.State):
         self.manual_msg = ""
         if not self.can_book_manual:
             self.manual_msg = "Indique o nome (ou email) e escolha um horário."
+            yield State.clear_message_after("manual_msg", self.manual_msg)
             return
         payload = {
             "barber_id": self.selected_barber,
@@ -1281,6 +1452,7 @@ class State(rx.State):
             "customer_name": self.manual_name,
             "customer_email": self.manual_email,
             "repeat_weeks": int(self.repeat_weeks),
+            "perpetual": self.perpetual,
         }
         async with httpx.AsyncClient(base_url=API_URL, timeout=5, headers=self._auth()) as client:
             resp = await client.post("/appointments/manual", json=payload)
@@ -1293,11 +1465,17 @@ class State(rx.State):
                 )
                 self.manual_name = ""
                 self.manual_email = ""
+                self.perpetual = False
                 await self._fetch_slots(client)
                 await self._load_schedule(client, self.selected_barber)
+                await self._load_recurring_series(client)
             elif resp.status_code == 404:
                 self.manual_msg = "Não existe conta com esse email."
+            elif resp.status_code == 409 and _error_code(resp) == STANDING_SLOT_CONFLICT:
+                self.manual_msg = "Este cliente já tem um horário fixo nesse dia e hora."
             elif resp.status_code == 409:
                 self.manual_msg = "Esse horário já não está disponível."
             else:
                 self.manual_msg = "Não foi possível marcar. Verifique os dados."
+        yield State.clear_message_after("manual_msg", self.manual_msg)
+

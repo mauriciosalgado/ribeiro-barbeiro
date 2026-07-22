@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from sqladmin.filters import BooleanFilter
-from sqlmodel import Session
+from sqlmodel import Session, select
 from starlette.requests import Request
 from wtforms import Form, PasswordField
 
@@ -123,9 +123,9 @@ class BarberAdmin(ModelView, model=Barber):
             return
         from app.seed import seed_default_services
 
-        session = request.state.session
-        seed_default_services(session, model.id)
-        await session.commit()
+        with Session(engine) as session:
+            seed_default_services(session, model.id)
+            session.commit()
 
 
 class ServiceAdmin(ModelView, model=Service):
@@ -168,6 +168,24 @@ class WorkingHoursAdmin(ModelView, model=WorkingHours):
         except ValidationError as error:
             message = error.errors()[0]["msg"].removeprefix("Value error, ")
             raise ValueError(message) from error
+
+        # One row per barber per weekday — give a readable message instead of
+        # letting the DB's UniqueConstraint surface as a raw IntegrityError.
+        barber_id = int(data["barber"]) if data.get("barber") else None
+        weekday = data.get("weekday")
+        if barber_id and weekday:
+            with Session(engine) as session:
+                existing = session.exec(
+                    select(WorkingHours).where(
+                        WorkingHours.barber_id == barber_id,
+                        WorkingHours.weekday == weekday,
+                    )
+                ).first()
+                if existing and existing.id != model.id:
+                    raise ValueError(
+                        "This barber already has working hours for that day — "
+                        "edit the existing entry instead of adding another."
+                    )
 
 
 class AppointmentAdmin(ModelView, model=Appointment):

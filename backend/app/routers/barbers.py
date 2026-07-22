@@ -27,6 +27,7 @@ from app.models import (
     WorkingHours,
     WorkingHoursItem,
 )
+from app.recurrence import ensure_materialized_for_barber
 from app.security import AdminUser, CurrentUser
 from app.seed import seed_default_services
 
@@ -157,6 +158,7 @@ def barber_schedule(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Cannot view another barber's schedule"
         )
+    ensure_materialized_for_barber(session, barber_id)
 
     query = (
         select(Appointment, User, Service)
@@ -186,6 +188,7 @@ def barber_schedule(
             if customer
             else (appointment.guest_name or "Guest"),
             customer_email=customer.email if customer else "",
+            customer_phone=(customer.phone or "") if customer else "",
             service_id=appointment.service_id,
             service_name=service.name if service else "",
             duration_minutes=appointment.duration_minutes,

@@ -18,6 +18,7 @@ from shop.state import (
     Day,
     DayTab,
     HoursRow,
+    RecurringSeriesEntry,
     ScheduledAppt,
     Service,
     Slot,
@@ -39,6 +40,131 @@ from shop.ui import (
     row,
     step,
 )
+
+# --- confirmation dialogs -------------------------------------------------
+
+
+def confirm_button(
+    label: str,
+    message: str | rx.Var,
+    on_confirm: Any,
+    color_scheme: str = "tomato",
+    size: str = "1",
+) -> rx.Component:
+    """A destructive action button that always asks for confirmation first."""
+    return rx.alert_dialog.root(
+        rx.alert_dialog.trigger(
+            rx.button(label, variant="soft", color_scheme=color_scheme, size=size)
+        ),
+        rx.alert_dialog.content(
+            rx.alert_dialog.title("Tem a certeza?"),
+            rx.alert_dialog.description(message, size="2"),
+            rx.hstack(
+                rx.alert_dialog.cancel(
+                    rx.button("Voltar", variant="soft", color_scheme="gray", size="2")
+                ),
+                rx.alert_dialog.action(
+                    rx.button(
+                        "Confirmar",
+                        color_scheme=color_scheme,
+                        size="2",
+                        on_click=on_confirm,
+                    )
+                ),
+                justify="end",
+                spacing="3",
+                margin_top="1rem",
+                width="100%",
+            ),
+            max_width="26rem",
+        ),
+    )
+
+
+def info_dialog_button(name: str | rx.Var, rows: list[rx.Component]) -> rx.Component:
+    """An icon-button trigger for a read-only "contact details" dialog.
+
+    Shared by the standing-series and daily-agenda views — anywhere the
+    barber/admin needs to see a registered customer's details without the
+    destructive styling of ``confirm_button``'s alert dialog.
+    """
+    return rx.dialog.root(
+        rx.dialog.trigger(
+            rx.icon_button(
+                rx.icon("info", size=15),
+                variant="soft",
+                color_scheme="gray",
+                size="1",
+            )
+        ),
+        rx.dialog.content(
+            rx.dialog.title(name),
+            rx.vstack(*rows, spacing="2", width="100%", margin_top="0.5rem"),
+            rx.dialog.close(
+                rx.button(
+                    "Fechar",
+                    variant="soft",
+                    color_scheme="gray",
+                    size="2",
+                    margin_top="1rem",
+                )
+            ),
+            max_width="24rem",
+        ),
+    )
+
+
+def customer_info_button(entry: RecurringSeriesEntry) -> rx.Component:
+    """The barber/admin's way to see a standing customer's contact details.
+
+    Not shown on the customer's own copy of "Horários Fixos" — they already
+    know their own email and phone.
+    """
+    return info_dialog_button(
+        entry.customer_name,
+        [
+            rx.cond(
+                entry.customer_email != "",
+                row_detail("mail", entry.customer_email),
+                row_detail("mail", "Sem conta — cliente sem email registado"),
+            ),
+            rx.cond(
+                entry.customer_phone != "",
+                row_detail("phone", entry.customer_phone),
+            ),
+            row_detail("repeat", f"Toda {entry.weekday_label} às {entry.time_label}"),
+            row_detail("scissors", entry.service_name),
+        ],
+    )
+
+
+def appointment_info_button(appt: ScheduledAppt) -> rx.Component:
+    """The barber/admin's way to see a registered customer's contact details
+    for a single (non-recurring) agenda booking — the walk-in equivalent of
+    ``customer_info_button`` for "Horários Fixos".
+    """
+    return info_dialog_button(
+        appt.customer_name,
+        [
+            row_detail("mail", appt.customer_email),
+            rx.cond(
+                appt.customer_phone != "",
+                row_detail("phone", appt.customer_phone),
+            ),
+            rx.cond(appt.service_name != "", row_detail("scissors", appt.service_name)),
+        ],
+    )
+
+
+def row_detail(icon: str, text: str | rx.Var) -> rx.Component:
+    """One line of an info dialog: a small icon plus its text."""
+    return rx.hstack(
+        rx.icon(icon, size=15, color=MUTED),
+        rx.text(text, size="2", color=INK),
+        align="center",
+        spacing="2",
+    )
+
 
 # --- booking pieces (shared by the customer view) ------------------------
 
@@ -115,20 +241,48 @@ def service_area() -> rx.Component:
 
 
 def recurrence_controls() -> rx.Component:
-    """The 'repeat weekly for N weeks' row — shared by customer and staff booking."""
-    return rx.hstack(
-        rx.icon("repeat", size=16, color=BRAND_TEXT),
-        rx.text("Repetir semanalmente", size="2", color=INK),
-        rx.select(
-            State.repeat_options,
-            value=State.repeat_weeks,
-            on_change=State.set_repeat_weeks,
-            size="2",
+    """The 'repeat weekly' row — shared by customer and staff booking.
+
+    A customer picks either "for N weeks" or "every week, forever" — not
+    both, so choosing "forever" disables the weeks picker.
+    """
+    return rx.vstack(
+        rx.hstack(
+            rx.icon("repeat", size=16, color=BRAND_TEXT),
+            rx.text("Repetir semanalmente", size="2", color=INK),
+            rx.select(
+                State.repeat_options,
+                value=State.repeat_weeks,
+                on_change=State.set_repeat_weeks,
+                disabled=State.perpetual,
+                size="2",
+            ),
+            rx.text("semana(s)", size="2", color=INK),
+            align="center",
+            spacing="2",
+            wrap="wrap",
         ),
-        rx.text("semana(s)", size="2", color=INK),
-        align="center",
+        rx.hstack(
+            rx.switch(
+                checked=State.perpetual,
+                on_change=State.set_perpetual,
+                size="2",
+            ),
+            rx.text(
+                "Todas as semanas, para sempre (até eu cancelar)", size="2", color=INK
+            ),
+            align="center",
+            spacing="2",
+        ),
+        rx.cond(
+            State.perpetual,
+            muted(
+                "Sem data de fim — pode cancelar este horário fixo a qualquer altura.",
+                size="1",
+            ),
+        ),
         spacing="2",
-        wrap="wrap",
+        align="start",
     )
 
 
@@ -245,7 +399,9 @@ def verify_banner() -> rx.Component:
 def booking_message() -> rx.Component:
     return rx.cond(
         State.booking_msg != "",
-        rx.callout(State.booking_msg, icon="info", width="100%"),
+        rx.callout(
+            State.booking_msg, icon="info", width="100%", color_scheme=State.booking_msg_color
+        ),
     )
 
 
@@ -307,20 +463,17 @@ def my_appointment_row(appt: Appt) -> rx.Component:
         rx.hstack(
             rx.cond(
                 appt.group_id != "",
-                rx.button(
+                confirm_button(
                     "Cancelar série",
-                    on_click=State.cancel_series(appt.group_id),
-                    variant="soft",
-                    color_scheme="tomato",
-                    size="1",
+                    "Isto cancela todas as próximas marcações desta série, "
+                    "a partir de hoje.",
+                    State.cancel_series(appt.group_id),
                 ),
             ),
-            rx.button(
+            confirm_button(
                 "Cancelar",
-                on_click=State.cancel_appointment(appt.id),
-                variant="soft",
-                color_scheme="tomato",
-                size="1",
+                f"Isto cancela a sua marcação das {appt.time}.",
+                State.cancel_appointment(appt.id),
             ),
             spacing="2",
         ),
@@ -376,15 +529,13 @@ def schedule_row(appt: ScheduledAppt) -> rx.Component:
             service_switcher(appt),
             rx.cond(
                 appt.customer_email != "",
-                muted(appt.customer_email, size="1"),
+                appointment_info_button(appt),
                 rx.badge("Sem conta", color_scheme="gray", variant="soft", radius="full"),
             ),
-            rx.button(
+            confirm_button(
                 "Cancelar",
-                on_click=State.cancel_schedule_appointment(appt.id),
-                variant="soft",
-                color_scheme="tomato",
-                size="1",
+                f"Isto cancela a marcação de {appt.customer_name} às {appt.time}.",
+                State.cancel_schedule_appointment(appt.id),
             ),
             align="center",
             spacing="2",
@@ -400,6 +551,91 @@ def my_appointment_group(group: ApptGroup) -> rx.Component:
         spacing="0",
         width="100%",
         align="start",
+    )
+
+
+def recurring_series_row(entry: RecurringSeriesEntry, for_staff: bool) -> rx.Component:
+    """One "Horário Fixo" — a standing weekly booking, perpetual or bounded.
+
+    The customer's own copy leads with the service (they know who they are).
+    The barber/admin's copy leads with the customer instead — that's the
+    detail staff actually need at a glance — with an info button for the
+    rest (email, phone).
+    """
+    headline = rx.cond(
+        for_staff,
+        rx.text(entry.customer_name, weight="bold", color=INK, size="2"),
+        rx.text(entry.service_name, weight="bold", color=INK, size="2"),
+    )
+    detail_line = rx.cond(
+        for_staff,
+        muted(
+            f"{entry.service_name} · Toda {entry.weekday_label} às {entry.time_label} · "
+            f"com {entry.barber_name}",
+            size="1",
+        ),
+        muted(
+            f"Toda {entry.weekday_label} às {entry.time_label} · "
+            f"{entry.customer_name} · com {entry.barber_name}",
+            size="1",
+        ),
+    )
+    return row(
+        rx.hstack(
+            rx.icon("repeat", size=18, color=BRAND),
+            rx.vstack(
+                rx.hstack(
+                    headline,
+                    rx.badge(
+                        entry.limit_label,
+                        color_scheme=rx.cond(entry.kind == "perpetual", "grass", "gray"),
+                        variant="soft",
+                        radius="full",
+                    ),
+                    align="center",
+                    spacing="2",
+                ),
+                detail_line,
+                spacing="0",
+                align="start",
+            ),
+            align="center",
+            spacing="3",
+        ),
+        rx.hstack(
+            rx.cond(for_staff, customer_info_button(entry)),
+            confirm_button(
+                "Cancelar",
+                f"Isto termina definitivamente este horário fixo: {entry.service_name}, "
+                f"toda {entry.weekday_label} às {entry.time_label}.",
+                State.cancel_recurring_series(entry.id),
+            ),
+            align="center",
+            spacing="2",
+        ),
+    )
+
+
+def recurring_series_card(subtitle: str, for_staff: bool = False) -> rx.Component:
+    """"Horários Fixos" — every standing weekly booking, perpetual or bounded."""
+    return card(
+        rx.vstack(
+            panel_title("Horários Fixos", subtitle),
+            rx.cond(
+                State.recurring_series,
+                rx.vstack(
+                    rx.foreach(
+                        State.recurring_series,
+                        lambda entry: recurring_series_row(entry, for_staff),
+                    ),
+                    spacing="2",
+                    width="100%",
+                ),
+                empty("Sem horários fixos no momento."),
+            ),
+            spacing="3",
+            width="100%",
+        )
     )
 
 
@@ -1147,6 +1383,7 @@ def customer_view() -> rx.Component:
                 width="100%",
             )
         ),
+        recurring_series_card("Os seus cortes semanais, sempre reservados"),
         spacing="5",
         width="100%",
     )
@@ -1182,6 +1419,7 @@ def schedule_card(subtitle: str) -> rx.Component:
 def barber_view() -> rx.Component:
     return rx.vstack(
         schedule_card("Os seus próximos dias com marcações"),
+        recurring_series_card("Os clientes com um horário fixo consigo", for_staff=True),
         manual_booking_card(),
         working_hours_card(),
         services_card(),
@@ -1211,6 +1449,9 @@ def admin_view() -> rx.Component:
             )
         ),
         schedule_card("Os próximos dias com marcações"),
+        recurring_series_card(
+            "Todos os clientes com um horário fixo", for_staff=True
+        ),
         manual_booking_card(),
         working_hours_card(),
         services_card(),

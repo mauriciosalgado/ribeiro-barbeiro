@@ -27,10 +27,13 @@ from app.models import (
     Barber,
     BookingResult,
     ManualAppointmentCreate,
+    RecurringSeries,
+    RecurringSeriesRead,
     Service,
     ServiceSwitch,
     User,
 )
+from app.recurrence import ensure_materialized, ensure_materialized_for_customer
 from app.security import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,20 @@ router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 # Customers can't cancel once the appointment is this close (staff still can).
 CANCEL_CUTOFF = timedelta(hours=1)
+
+# Machine-readable error code so the frontend can recognise this specific
+# conflict without matching on human-readable message text.
+STANDING_SLOT_CONFLICT = "standing_slot_conflict"
+
+
+def _standing_slot_conflict_error() -> HTTPException:
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        {
+            "code": STANDING_SLOT_CONFLICT,
+            "message": "You already have a standing appointment at this weekday and time",
+        },
+    )
 
 
 def _notify_cancellation(email: str, name: str, start_at: datetime) -> None:
@@ -58,6 +75,97 @@ def _notify_cancellation(email: str, name: str, start_at: datetime) -> None:
         )
     except OSError as error:
         logger.warning("Could not send cancellation email to %s: %s", email, error)
+
+
+def _has_standing_slot_conflict(
+    session: Session, customer_id: int | None, when: datetime
+) -> bool:
+    """Would a new weekly series clash with a standing slot this customer already has?
+
+    Two recurring bookings landing on the same weekday at the same time can
+    never both happen (no matter the barber or service), so this is checked
+    before creating any new recurring series — bounded or perpetual. Guests
+    (no account) aren't tracked well enough to check reliably, so they're
+    exempt, same as the one-off same-day case.
+    """
+    if customer_id is None:
+        return False
+
+    weekday, time_of_day = when.weekday(), when.time()
+
+    perpetual = session.exec(
+        select(RecurringSeries).where(RecurringSeries.customer_id == customer_id)
+    ).all()
+    if any(
+        s.anchor_start_at.weekday() == weekday
+        and s.anchor_start_at.time() == time_of_day
+        for s in perpetual
+    ):
+        return True
+
+    bounded = session.exec(
+        select(Appointment).where(
+            Appointment.customer_id == customer_id,
+            col(Appointment.recurrence_group_id).is_not(None),
+            Appointment.start_at >= shop_now(),
+        )
+    ).all()
+    return any(
+        a.start_at.weekday() == weekday and a.start_at.time() == time_of_day
+        for a in bounded
+    )
+
+
+def _book_perpetual(
+    session: Session,
+    barber: Barber,
+    service: Service,
+    customer_id: int | None,
+    guest_name: str | None,
+    start_at: datetime,
+    enforce_policy: bool,
+) -> BookingResult:
+    """Book a slot that repeats weekly, forever, until the series is cancelled.
+
+    Only the pattern is stored as a RecurringSeries; real Appointment rows
+    are created a rolling window at a time by app.recurrence.
+    """
+    if enforce_policy and not barber.allow_recurring:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This barber does not allow weekly bookings"
+        )
+    if _has_standing_slot_conflict(session, customer_id, start_at):
+        raise _standing_slot_conflict_error()
+    assert barber.id is not None and service.id is not None
+    if not slot_is_free(session, barber, start_at, service.duration_minutes):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Slot is not available")
+
+    series = RecurringSeries(
+        id=uuid4().hex,
+        barber_id=barber.id,
+        customer_id=customer_id,
+        guest_name=guest_name,
+        service_id=service.id,
+        anchor_start_at=start_at,
+        duration_minutes=service.duration_minutes,
+        materialized_through=start_at - timedelta(weeks=1),
+    )
+    session.add(series)
+    session.commit()
+    session.refresh(series)
+    ensure_materialized(session, series)
+
+    booked = session.exec(
+        select(Appointment)
+        .where(Appointment.recurrence_group_id == series.id)
+        .order_by(col(Appointment.start_at))
+    ).all()
+    return BookingResult(
+        booked=[
+            AppointmentRead.model_validate(a, from_attributes=True) for a in booked
+        ],
+        skipped=[],
+    )
 
 
 def _book_series(
@@ -85,6 +193,8 @@ def _book_series(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 f"At most {barber.max_recurring_weeks} weeks can be booked at once",
             )
+        if _has_standing_slot_conflict(session, customer_id, start_at):
+            raise _standing_slot_conflict_error()
 
     group_id = uuid4().hex if repeat_weeks > 1 else None
     booked: list[Appointment] = []
@@ -140,6 +250,10 @@ def reserve(
     service = bookable_service(session, barber, data.service_id)
 
     assert user.id is not None
+    if data.perpetual:
+        return _book_perpetual(
+            session, barber, service, user.id, None, data.start_at, True
+        )
     return _book_series(
         session, barber, service, user.id, None, data.start_at, data.repeat_weeks, True
     )
@@ -182,6 +296,10 @@ def reserve_manual(
         )
 
     # Staff may book recurring for a customer regardless of the public toggle.
+    if data.perpetual:
+        return _book_perpetual(
+            session, barber, service, customer_id, guest_name, data.start_at, False
+        )
     return _book_series(
         session,
         barber,
@@ -228,6 +346,8 @@ def switch_service(
 @router.get("", response_model=list[AppointmentRead])
 def my_appointments(session: SessionDep, user: CurrentUser) -> Sequence[Appointment]:
     """A customer's upcoming bookings (past visits live in the admin console)."""
+    assert user.id is not None
+    ensure_materialized_for_customer(session, user.id)
     today_start = datetime.combine(shop_now().date(), time.min)
     return session.exec(
         select(Appointment)
@@ -237,26 +357,138 @@ def my_appointments(session: SessionDep, user: CurrentUser) -> Sequence[Appointm
     ).all()
 
 
+def _customer_label(customer: User | None, guest_name: str | None) -> str:
+    if customer is not None:
+        return customer.full_name
+    return guest_name or "Guest"
+
+
+def _own_barber(session: Session, user: User) -> Barber | None:
+    return session.exec(select(Barber).where(Barber.user_id == user.id)).first()
+
+
+@router.get("/recurring-series", response_model=list[RecurringSeriesRead])
+def list_recurring_series(
+    session: SessionDep, user: CurrentUser
+) -> list[RecurringSeriesRead]:
+    """Every standing weekly booking, scoped to the caller's role.
+
+    Covers both a perpetual series (repeats forever) and a bounded weekly
+    series (repeats up to the barber's max_recurring_weeks) — the two ways a
+    customer can have a "standing" slot with this shop. Admins see every
+    one; a barber sees their own chair's; a customer sees their own.
+    """
+    assert user.id is not None
+    own_barber = None if user.is_admin else _own_barber(session, user)
+
+    # --- perpetual: the pattern lives entirely in one RecurringSeries row ---
+    perpetual_query = select(RecurringSeries)
+    if own_barber is not None:
+        perpetual_query = perpetual_query.where(
+            RecurringSeries.barber_id == own_barber.id
+        )
+    elif not user.is_admin:
+        perpetual_query = perpetual_query.where(RecurringSeries.customer_id == user.id)
+    series_list = session.exec(perpetual_query).all()
+    perpetual_ids = {series.id for series in series_list}
+
+    reads: list[RecurringSeriesRead] = []
+    for series in series_list:
+        barber = session.get(Barber, series.barber_id)
+        service = session.get(Service, series.service_id) if series.service_id else None
+        customer = session.get(User, series.customer_id) if series.customer_id else None
+        reads.append(
+            RecurringSeriesRead(
+                id=series.id,
+                kind="perpetual",
+                barber_id=series.barber_id,
+                barber_name=barber.user.full_name if barber and barber.user else "",
+                customer_name=_customer_label(customer, series.guest_name),
+                customer_email=customer.email if customer else "",
+                customer_phone=(customer.phone or "") if customer else "",
+                service_id=series.service_id,
+                service_name=service.name if service else "",
+                anchor_start_at=series.anchor_start_at,
+                duration_minutes=series.duration_minutes,
+                ends_at=None,
+            )
+        )
+
+    # --- bounded: just a shared recurrence_group_id across Appointment rows ---
+    appt_query = select(Appointment).where(
+        col(Appointment.recurrence_group_id).is_not(None),
+        Appointment.start_at >= shop_now(),
+    )
+    if own_barber is not None:
+        appt_query = appt_query.where(Appointment.barber_id == own_barber.id)
+    elif not user.is_admin:
+        appt_query = appt_query.where(Appointment.customer_id == user.id)
+    rows = session.exec(appt_query.order_by(col(Appointment.start_at))).all()
+
+    groups: dict[str, list[Appointment]] = {}
+    for row in rows:
+        group_id = row.recurrence_group_id
+        if group_id is None or group_id in perpetual_ids:
+            continue  # a perpetual series' own materialised rows, already covered
+        groups.setdefault(group_id, []).append(row)
+
+    for group_id, appointments in groups.items():
+        first, last = appointments[0], appointments[-1]
+        barber = session.get(Barber, first.barber_id)
+        service = session.get(Service, first.service_id) if first.service_id else None
+        customer = session.get(User, first.customer_id) if first.customer_id else None
+        reads.append(
+            RecurringSeriesRead(
+                id=group_id,
+                kind="bounded",
+                barber_id=first.barber_id,
+                barber_name=barber.user.full_name if barber and barber.user else "",
+                customer_name=_customer_label(customer, first.guest_name),
+                customer_email=customer.email if customer else "",
+                customer_phone=(customer.phone or "") if customer else "",
+                service_id=first.service_id,
+                service_name=service.name if service else "",
+                anchor_start_at=first.start_at,
+                duration_minutes=first.duration_minutes,
+                ends_at=last.start_at.date(),
+            )
+        )
+
+    reads.sort(key=lambda read: read.anchor_start_at)
+    return reads
+
+
 @router.delete("/series/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_series(group_id: str, session: SessionDep, user: CurrentUser) -> None:
-    """Cancel all upcoming appointments in a weekly series at once."""
+    """Cancel all upcoming appointments in a weekly series at once.
+
+    ``group_id`` may belong to a bounded weekly series (plain Appointment
+    rows only) or a perpetual RecurringSeries — either way this ends it for
+    good and cancels everything still upcoming.
+    """
     appointments = session.exec(
         select(Appointment).where(
             Appointment.recurrence_group_id == group_id,
             Appointment.start_at >= shop_now(),
         )
     ).all()
-    if not appointments:
+    series = session.get(RecurringSeries, group_id)
+    if not appointments and series is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "No upcoming appointments in this series"
         )
 
-    first = appointments[0]
-    barber = session.get(Barber, first.barber_id)
+    if series is not None:
+        barber_id, customer_id = series.barber_id, series.customer_id
+    else:
+        barber_id, customer_id = appointments[0].barber_id, appointments[0].customer_id
+    barber = session.get(Barber, barber_id)
     is_staff = user.is_admin or (barber is not None and barber.user_id == user.id)
-    if not is_staff and first.customer_id != user.id:
+    if not is_staff and customer_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your series")
 
+    if series is not None:
+        session.delete(series)
     for appointment in appointments:
         session.delete(appointment)
     session.commit()

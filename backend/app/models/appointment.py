@@ -59,6 +59,7 @@ class AppointmentCreate(SQLModel):
     service_id: int
     start_at: ShopLocalDatetime
     repeat_weeks: int = Field(default=1, ge=1, le=52)  # 1 = a single booking
+    perpetual: bool = False  # weekly, forever until cancelled — ignores repeat_weeks
 
 
 class ManualAppointmentCreate(SQLModel):
@@ -74,6 +75,7 @@ class ManualAppointmentCreate(SQLModel):
     customer_name: str = ""
     customer_email: str = ""
     repeat_weeks: int = Field(default=1, ge=1, le=52)
+    perpetual: bool = False
 
 
 class ServiceSwitch(SQLModel):
@@ -111,6 +113,7 @@ class ScheduledAppointment(SQLModel):
     start_at: datetime
     customer_name: str
     customer_email: str = ""  # empty for a walk-in with no account
+    customer_phone: str = ""  # empty for a walk-in, or an account with none on file
     service_id: int | None = None
     service_name: str = ""
     duration_minutes: int = 30
